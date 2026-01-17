@@ -188,6 +188,14 @@ export async function GET() {
 
         const cityList = 'Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted|Porto|Naples|Venice|Vienna|Prague|Budapest';
 
+        // Debug: search for city names in body to see what format they appear in
+        const milanIdx = bodyText.toLowerCase().indexOf('milan');
+        const barcelonaIdx = bodyText.toLowerCase().indexOf('barcelona');
+        if (milanIdx > 0 || barcelonaIdx > 0) {
+          const startIdx = Math.max(0, Math.min(milanIdx > 0 ? milanIdx : 99999, barcelonaIdx > 0 ? barcelonaIdx : 99999) - 20);
+          console.log(`City context for ${flightNumber}: "${bodyText.substring(startIdx, startIdx + 100).replace(/\s+/g, ' ')}"`);
+        }
+
         // Pattern 1: "City-City, U2" format (EasyJet email header like "Milan-Barcelona, U2 3755")
         const cityDashU2Match = textToSearch.match(new RegExp(`(${cityList})\\s*[-–—]\\s*(${cityList})\\s*,\\s*U2`, 'i'));
         if (cityDashU2Match) {
@@ -273,6 +281,23 @@ export async function GET() {
   }
 }
 
+// Decode HTML entities
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&ndash;/g, '-')
+    .replace(/&mdash;/g, '-')
+    .replace(/&#45;/g, '-')
+    .replace(/&#8211;/g, '-')
+    .replace(/&#8212;/g, '-')
+    .replace(/&rarr;/g, '→')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
 // Extract text from email body (handles multipart)
 function extractBodyText(payload: any): string {
   if (!payload) return '';
@@ -290,9 +315,10 @@ function extractBodyText(payload: any): string {
       if (part.mimeType === 'text/plain' && part.body?.data) {
         text += decodeBase64(part.body.data);
       } else if (part.mimeType === 'text/html' && part.body?.data) {
-        // Strip HTML tags for searching
+        // Strip HTML tags and decode entities for searching
         const html = decodeBase64(part.body.data);
-        text += html.replace(/<[^>]*>/g, ' ');
+        const stripped = html.replace(/<[^>]*>/g, ' ');
+        text += decodeHtmlEntities(stripped);
       } else if (part.parts) {
         // Nested multipart
         text += extractBodyText(part);
