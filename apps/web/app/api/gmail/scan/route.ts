@@ -272,8 +272,8 @@ export async function GET() {
           }
         }
 
-        // Extract ALL flight numbers from this email
-        const flightNumbers: string[] = [];
+        // Extract ALL flight numbers with their positions in the email
+        const flightMatches: Array<{flightNumber: string, position: number}> = [];
         for (const pattern of FLIGHT_PATTERNS) {
           pattern.lastIndex = 0;
           let match;
@@ -282,28 +282,34 @@ export async function GET() {
             if (fn.startsWith('EZY') || fn.startsWith('EJU')) {
               fn = 'U2' + fn.slice(3);
             }
-            if (!flightNumbers.includes(fn)) {
-              flightNumbers.push(fn);
+            if (!flightMatches.find(f => f.flightNumber === fn)) {
+              flightMatches.push({ flightNumber: fn, position: match.index });
             }
           }
         }
 
         // Skip if no flight numbers found
-        if (flightNumbers.length === 0) continue;
+        if (flightMatches.length === 0) continue;
 
-        console.log(`Found ${flightNumbers.length} flight(s) in email: ${flightNumbers.join(', ')}`);
+        console.log(`Found ${flightMatches.length} flight(s) in email: ${flightMatches.map(f => f.flightNumber).join(', ')}`);
 
         // Process each flight number found in this email
-        for (const flightNumber of flightNumbers) {
+        for (const flightMatch of flightMatches) {
+          const flightNumber = flightMatch.flightNumber;
 
-        // Extract flight date - prefer dates with year
+          // Get context around this flight number (500 chars before and after)
+          const contextStart = Math.max(0, flightMatch.position - 500);
+          const contextEnd = Math.min(textToSearch.length, flightMatch.position + 500);
+          const flightContext = textToSearch.substring(contextStart, contextEnd);
+
+        // Extract flight date - prefer dates with year, search in context first
         let flightDate = '';
         let hasYear = false;
 
-        // First try patterns with year
+        // First try patterns with year in flight context
         for (const pattern of DATE_PATTERNS_WITH_YEAR) {
           pattern.lastIndex = 0;
-          const match = pattern.exec(textToSearch);
+          const match = pattern.exec(flightContext);
           if (match) {
             flightDate = match[0];
             hasYear = true;
@@ -315,7 +321,7 @@ export async function GET() {
         if (!flightDate) {
           for (const pattern of DATE_PATTERNS_NO_YEAR) {
             pattern.lastIndex = 0;
-            const match = pattern.exec(textToSearch);
+            const match = pattern.exec(flightContext);
             if (match) {
               const day = match[1].padStart(2, '0');
               const monthStr = match[2].toLowerCase();
@@ -323,27 +329,20 @@ export async function GET() {
               // Infer year from email received date
               const emailYear = date ? new Date(date).getFullYear() : new Date().getFullYear();
               flightDate = `${day}/${month}/${emailYear}`;
-              console.log(`Inferred date with year: ${flightDate} from "${match[0]}"`);
+              console.log(`Inferred date with year: ${flightDate} from "${match[0]}" for ${flightNumber}`);
               break;
             }
           }
         }
 
-        // Extract route - try multiple patterns
+        // Extract route - try multiple patterns, search in flight context first
         let route = '';
 
-        // Use the global CITIES constant for route matching
-
-        // Debug: search for city names in body to see what format they appear in
-        const milanIdx = bodyText.toLowerCase().indexOf('milan');
-        const barcelonaIdx = bodyText.toLowerCase().indexOf('barcelona');
-        if (milanIdx > 0 || barcelonaIdx > 0) {
-          const startIdx = Math.max(0, Math.min(milanIdx > 0 ? milanIdx : 99999, barcelonaIdx > 0 ? barcelonaIdx : 99999) - 20);
-          console.log(`City context for ${flightNumber}: "${bodyText.substring(startIdx, startIdx + 100).replace(/\s+/g, ' ')}"`);
-        }
+        // Debug: show context for this flight
+        console.log(`Context for ${flightNumber}: "${flightContext.substring(0, 200).replace(/\s+/g, ' ')}..."`);
 
         // Pattern 1: "City [Airport] to City" format (EasyJet confirmation: "Milan Malpensa (T2) to Barcelona (Terminal 2C)")
-        const cityToMatch = textToSearch.match(new RegExp(`(${CITIES})\\s+(?:Malpensa|Airport|Luton|Gatwick|Stansted|Heathrow)?\\s*(?:\\([^)]*\\))?\\s+to\\s+(${CITIES})`, 'i'));
+        const cityToMatch = flightContext.match(new RegExp(`(${CITIES})\\s+(?:Malpensa|Airport|Luton|Gatwick|Stansted|Heathrow)?\\s*(?:\\([^)]*\\))?\\s+to\\s+(${CITIES})`, 'i'));
         if (cityToMatch) {
           route = `${cityToMatch[1]} → ${cityToMatch[2]}`;
           console.log(`Route matched City to City format: ${route}`);
@@ -351,7 +350,7 @@ export async function GET() {
 
         // Pattern 2: "City-City, U2" format (EasyJet email header like "Milan-Barcelona, U2 3755")
         if (!route) {
-          const cityDashU2Match = textToSearch.match(new RegExp(`(${CITIES})\\s*[-–—]\\s*(${CITIES})\\s*,\\s*U2`, 'i'));
+          const cityDashU2Match = flightContext.match(new RegExp(`(${CITIES})\\s*[-–—]\\s*(${CITIES})\\s*,\\s*U2`, 'i'));
           if (cityDashU2Match) {
             route = `${cityDashU2Match[1]} → ${cityDashU2Match[2]}`;
             console.log(`Route matched City-City, U2 format: ${route}`);
@@ -360,52 +359,61 @@ export async function GET() {
 
         // Pattern 3: Ryanair format "Milan (Bergamo) - Cologne (Bonn)" with airport in parentheses
         if (!route) {
-          const ryanairRouteMatch = textToSearch.match(new RegExp(`(${CITIES})\\s*\\([^)]+\\)\\s*[-–—]\\s*(${CITIES})`, 'i'));
+          const ryanairRouteMatch = flightContext.match(new RegExp(`(${CITIES})\\s*\\([^)]+\\)\\s*[-–—]\\s*(${CITIES})`, 'i'));
           if (ryanairRouteMatch) {
             route = `${ryanairRouteMatch[1]} → ${ryanairRouteMatch[2]}`;
             console.log(`Route matched Ryanair City (Airport) - City format: ${route}`);
           }
         }
 
-        // Pattern 3b: Generic "City-City" anywhere
+        // Pattern 3b: Generic "City-City" anywhere in context
         if (!route) {
-          const cityDashMatch = textToSearch.match(new RegExp(`(${CITIES})\\s*[-–—]\\s*(${CITIES})`, 'i'));
+          const cityDashMatch = flightContext.match(new RegExp(`(${CITIES})\\s*[-–—]\\s*(${CITIES})`, 'i'));
           if (cityDashMatch) {
             route = `${cityDashMatch[1]} → ${cityDashMatch[2]}`;
             console.log(`Route matched City-City format: ${route}`);
           }
         }
 
-        // Pattern 4: "from X to Y" in full text
+        // Pattern 4: "from X to Y" in context
         if (!route) {
-          const fromToMatch = textToSearch.match(new RegExp(`from\\s+(${CITIES})\\s+to\\s+(${CITIES})`, 'i'));
+          const fromToMatch = flightContext.match(new RegExp(`from\\s+(${CITIES})\\s+to\\s+(${CITIES})`, 'i'));
           if (fromToMatch) {
             route = `${fromToMatch[1]} → ${fromToMatch[2]}`;
             console.log(`Route matched from-to format: ${route}`);
           }
         }
 
-        // Pattern 5: "flight to [City]" - extract at least destination (fallback)
+        // Pattern 5: "To [City]" right before flight number (Ryanair: "To Cologne (Bonn) FR5531")
         if (!route) {
-          const flightToMatch = textToSearch.match(new RegExp(`(?:your\\s+)?flight\\s+to\\s+(${CITIES})`, 'i'));
+          const toFlightMatch = flightContext.match(new RegExp(`To\\s+(${CITIES})(?:\\s*\\([^)]+\\))?\\s*${flightNumber}`, 'i'));
+          if (toFlightMatch) {
+            route = `→ ${toFlightMatch[1]}`;
+            console.log(`Route matched "To City FRxxxx" format: ${route}`);
+          }
+        }
+
+        // Pattern 5b: "flight to [City]" - extract at least destination (fallback)
+        if (!route) {
+          const flightToMatch = flightContext.match(new RegExp(`(?:your\\s+)?flight\\s+to\\s+(${CITIES})`, 'i'));
           if (flightToMatch) {
             route = `→ ${flightToMatch[1]}`;
             console.log(`Route matched destination only: ${route}`);
           }
         }
 
-        // Pattern 5b: Ryanair "Your flight details for [City]" or "your trip to [City]"
+        // Pattern 5c: Ryanair "Your flight details for [City]" or "your trip to [City]"
         if (!route) {
-          const flightDetailsMatch = textToSearch.match(new RegExp(`(?:flight\\s+details\\s+for|your\\s+trip\\s+to)\\s+(${CITIES}(?:/[A-Za-z]+)?)`, 'i'));
+          const flightDetailsMatch = flightContext.match(new RegExp(`(?:flight\\s+details\\s+for|your\\s+trip\\s+to)\\s+(${CITIES}(?:/[A-Za-z]+)?)`, 'i'));
           if (flightDetailsMatch) {
             route = `→ ${flightDetailsMatch[1]}`;
             console.log(`Route matched Ryanair flight details format: ${route}`);
           }
         }
 
-        // Pattern 6: Ryanair format - IATA codes "DUB - STN" or "DUB → STN" or "DUB to STN"
+        // Pattern 6: IATA codes "BGY - CGN" in context
         if (!route) {
-          const iataMatch = textToSearch.match(/\b([A-Z]{3})\s*(?:to|→|-|–|>)\s*([A-Z]{3})\b/i);
+          const iataMatch = flightContext.match(/\b([A-Z]{3})\s*(?:to|→|-|–|>)\s*([A-Z]{3})\b/i);
           if (iataMatch) {
             const [, origin, dest] = iataMatch;
             // Convert common IATA codes to city names
