@@ -125,8 +125,8 @@ export async function GET() {
     const messages = response.data.messages || [];
     console.log(`Found ${messages.length} messages`);
 
-    const flights: FlightInfo[] = [];
-    const seenBookingRefs = new Set<string>();
+    // Collect data from all emails, then merge by booking ref
+    const bookingData: Map<string, FlightInfo> = new Map();
 
     // Get details for each message - now with FULL body
     for (const msg of messages.slice(0, 30)) {
@@ -160,39 +160,19 @@ export async function GET() {
           }
         }
 
-        // Skip if we've already seen this booking
-        if (bookingRef && seenBookingRefs.has(bookingRef)) {
-          continue;
-        }
-        if (bookingRef) {
-          seenBookingRefs.add(bookingRef);
-        }
-
         // Extract flight number
         let flightNumber = '';
-
-        // Debug: log first 500 chars of text being searched
-        console.log('=== Searching in text (first 500 chars) ===');
-        console.log(textToSearch.substring(0, 500));
-        console.log('=== Subject:', subject);
-
         for (const pattern of FLIGHT_PATTERNS) {
           pattern.lastIndex = 0;
           const match = pattern.exec(textToSearch);
           if (match) {
-            console.log('Flight pattern matched:', pattern, 'Result:', match);
-            // Normalize: remove spaces, uppercase
+            console.log('Flight pattern matched:', pattern, 'Result:', match[0]);
             flightNumber = `${match[1]}${match[2]}`.replace(/\s/g, '').toUpperCase();
-            // Convert EZY/EJU to U2 for consistency
             if (flightNumber.startsWith('EZY') || flightNumber.startsWith('EJU')) {
               flightNumber = 'U2' + flightNumber.slice(3);
             }
             break;
           }
-        }
-
-        if (!flightNumber) {
-          console.log('No flight number found in:', subject);
         }
 
         // Extract flight date
@@ -206,7 +186,7 @@ export async function GET() {
           }
         }
 
-        // Extract route (only use city names to avoid false positives)
+        // Extract route
         let route = '';
         CITY_ROUTE_PATTERN.lastIndex = 0;
         const cityMatch = CITY_ROUTE_PATTERN.exec(textToSearch);
@@ -214,24 +194,42 @@ export async function GET() {
           route = `${cityMatch[1]} → ${cityMatch[2]}`;
         }
 
-        // Only add if we found something useful
-        if (flightNumber || bookingRef || route) {
-          flights.push({
-            id: msg.id!,
-            flightNumber: flightNumber || 'Check email',
-            date: flightDate || 'Check email',
-            route: route || 'Check email',
-            bookingRef: bookingRef || '-',
-            subject: subject.substring(0, 80),
-            from: extractEmailDomain(from),
-            snippet: snippet.substring(0, 100) + '...',
-            receivedAt: date,
-          });
+        // If we have a booking ref, merge with existing data
+        if (bookingRef) {
+          const existing = bookingData.get(bookingRef);
+          if (existing) {
+            // Merge: keep non-empty values, prefer new flight number if found
+            if (flightNumber && (!existing.flightNumber || existing.flightNumber === 'Check email')) {
+              existing.flightNumber = flightNumber;
+            }
+            if (flightDate && (!existing.date || existing.date === 'Check email')) {
+              existing.date = flightDate;
+            }
+            if (route && (!existing.route || existing.route === 'Check email')) {
+              existing.route = route;
+            }
+          } else {
+            // First time seeing this booking ref
+            bookingData.set(bookingRef, {
+              id: msg.id!,
+              flightNumber: flightNumber || 'Check email',
+              date: flightDate || 'Check email',
+              route: route || 'Check email',
+              bookingRef,
+              subject: subject.substring(0, 80),
+              from: extractEmailDomain(from),
+              snippet: snippet.substring(0, 100) + '...',
+              receivedAt: date,
+            });
+          }
         }
       } catch (err) {
         console.error('Error fetching message:', err);
       }
     }
+
+    // Convert map to array
+    const flights = Array.from(bookingData.values());
 
     return NextResponse.json({
       success: true,
