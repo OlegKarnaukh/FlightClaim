@@ -1,4 +1,51 @@
+'use client';
+
+import { signIn, signOut, useSession } from 'next-auth/react';
+
 export default function Home() {
+  const { data: session, status } = useSession();
+
+  if (status === 'loading') {
+    return (
+      <main style={styles.main}>
+        <div style={styles.container}>
+          <h1 style={styles.title}>FlightClaim</h1>
+          <p style={styles.subtitle}>Loading...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (session) {
+    return (
+      <main style={styles.main}>
+        <div style={styles.container}>
+          <h1 style={styles.title}>FlightClaim</h1>
+          <p style={styles.subtitle}>
+            Welcome, <span style={styles.highlight}>{session.user?.name}</span>!
+          </p>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Account Connected</h2>
+            <p style={styles.cardText}>Email: {session.user?.email}</p>
+            <p style={styles.cardText}>
+              Gmail Access: {session.accessToken ? '✅ Granted' : '❌ Not granted'}
+            </p>
+          </div>
+
+          <div style={styles.buttonGroup}>
+            <a href="/dashboard" style={styles.buttonPrimary}>
+              Scan My Emails
+            </a>
+            <button style={styles.buttonSecondary} onClick={() => signOut()}>
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main style={styles.main}>
       <div style={styles.container}>
@@ -17,7 +64,7 @@ export default function Home() {
           </ol>
         </div>
 
-        <button style={styles.button}>
+        <button style={styles.button} onClick={() => signIn('google')}>
           Sign in with Google
         </button>
 
@@ -67,6 +114,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '1.2rem',
     marginBottom: '15px',
   },
+  cardText: {
+    fontSize: '1rem',
+    marginBottom: '8px',
+    opacity: 0.9,
+  },
   list: {
     textAlign: 'left',
     paddingLeft: '20px',
@@ -82,6 +134,32 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '50px',
     cursor: 'pointer',
     marginBottom: '20px',
+  },
+  buttonGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    alignItems: 'center',
+  },
+  buttonPrimary: {
+    background: '#ffd700',
+    color: '#333',
+    border: 'none',
+    padding: '15px 40px',
+    fontSize: '1.1rem',
+    fontWeight: 'bold',
+    borderRadius: '50px',
+    cursor: 'pointer',
+    textDecoration: 'none',
+  },
+  buttonSecondary: {
+    background: 'rgba(255, 255, 255, 0.2)',
+    color: 'white',
+    border: '2px solid white',
+    padding: '12px 30px',
+    fontSize: '1rem',
+    borderRadius: '50px',
+    cursor: 'pointer',
   },
   footer: {
     fontSize: '0.85rem',
