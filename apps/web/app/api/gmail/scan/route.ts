@@ -672,29 +672,49 @@ export async function GET() {
         }
 
         // NEW: Handle case where both flights have identical routes (fallback found same route for both)
-        // If two flights have the same "A → B" route, one is return "B → A"
+        // If two flights have the same "A → B" route, one MIGHT be return "B → A"
+        // BUT only if dates are significantly different (2+ days) - otherwise it's likely connecting flights
         const flightsWithSameRoute = group.filter(f => f.route.includes('→') && !f.route.startsWith('→'));
         if (flightsWithSameRoute.length === 2) {
           const [flight1, flight2] = flightsWithSameRoute;
           if (flight1.route === flight2.route) {
-            // Routes are identical - one should be the return flight
+            // Routes are identical - check if this looks like round-trip or connecting flights
             const date1 = parseFlightDate(flight1.date);
             const date2 = parseFlightDate(flight2.date);
 
+            // Calculate days between flights
+            const daysDiff = Math.abs(date1 - date2) / (1000 * 60 * 60 * 24);
+
+            console.log(`Same route check: ${flight1.flightNumber} (${flight1.date}) vs ${flight2.flightNumber} (${flight2.date}), days diff: ${daysDiff}`);
+
             let returnFlight: typeof flight1 | null = null;
 
-            // If dates are different, the later flight is the return
-            if (date1 !== date2 && date1 > 0 && date2 > 0) {
+            if (daysDiff > 1 && date1 > 0 && date2 > 0) {
+              // Dates 2+ days apart - clearly a round-trip, use date to determine return
               returnFlight = date1 > date2 ? flight1 : flight2;
-              console.log(`Return flight determined by date: ${returnFlight.flightNumber}`);
-            } else {
-              // Dates are same or invalid - use flight number as heuristic
-              // Extract numeric part of flight numbers to compare
+              console.log(`Return flight by date (${daysDiff} days apart): ${returnFlight.flightNumber}`);
+            } else if (daysDiff === 0 || date1 === 0 || date2 === 0) {
+              // Dates are exactly the same (likely parsing error) - use flight number heuristic
+              // BUT only if same airline AND flight numbers are close (likely round-trip, not connecting)
+              const airline1 = flight1.flightNumber.substring(0, 2);
+              const airline2 = flight2.flightNumber.substring(0, 2);
               const num1 = parseInt(flight1.flightNumber.replace(/[A-Z]/g, '')) || 0;
               const num2 = parseInt(flight2.flightNumber.replace(/[A-Z]/g, '')) || 0;
-              // Higher flight number is typically the return flight
-              returnFlight = num1 > num2 ? flight1 : num2 > num1 ? flight2 : flight2; // default to second one
-              console.log(`Return flight determined by flight number: ${returnFlight.flightNumber} (${num1} vs ${num2})`);
+              const numGap = Math.abs(num1 - num2);
+
+              // Flight numbers with gap > 500 are likely connecting flights (different aircraft)
+              // Flight numbers with gap < 100 are likely round-trip (same route pair)
+              if (airline1 === airline2 && numGap < 500) {
+                returnFlight = num1 > num2 ? flight1 : num2 > num1 ? flight2 : null;
+                if (returnFlight) {
+                  console.log(`Return flight by number (same airline ${airline1}, gap ${numGap}): ${returnFlight.flightNumber}`);
+                }
+              } else {
+                console.log(`Skipping - flight number gap ${numGap} suggests connecting flights`);
+              }
+            } else {
+              // Dates 1 day apart - likely connecting flights, don't swap
+              console.log(`Skipping route swap - dates 1 day apart, likely connecting flights`);
             }
 
             if (returnFlight) {
