@@ -172,7 +172,12 @@
 - [x] Принято решение: Web-стек (Expo + Next.js) вместо Flutter
 - [x] Создан PROJECT.md для отслеживания прогресса
 - [x] Выбран хостинг: **Railway** (вместо Vercel) — уже оплачен, нет лимитов на время выполнения
-- [ ] **NEXT:** Создать структуру монорепо
+- [x] Создана структура монорепо (Turborepo + pnpm workspaces)
+- [x] Создано Next.js приложение (apps/web) с базовым UI
+- [x] Создано Expo приложение (apps/mobile) с базовым UI
+- [x] Создан пакет @flightclaim/eu261 — логика расчёта компенсаций
+- [x] Создан пакет @flightclaim/ui — shared компоненты и тема
+- [ ] **NEXT:** Настроить Google OAuth и Gmail API
 
 ---
 
@@ -228,4 +233,4 @@ DATABASE_URL=
 
 ---
 
-**Последнее обновление:** 2026-01-17 (Railway selected)
+**Последнее обновление:** 2026-01-17 (Monorepo structure created)
