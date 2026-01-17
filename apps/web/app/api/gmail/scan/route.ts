@@ -30,6 +30,12 @@ const AIRLINE_CONTENT_QUERIES = [
   '"easyjet booking"',
   '"your flight" ryanair',
   '"your flight" easyjet',
+  // For forwarded emails - search by content patterns
+  '"ryanair DAC"',           // Ryanair footer
+  '"ryanairmail.com"',       // Ryanair sender domain in forwarded headers
+  '"flight details for"',    // Ryanair email content
+  'reservation ryanair',     // Ryanair reservation
+  '"your trip to"',          // Ryanair subject pattern
 ];
 
 // Flight number patterns - more comprehensive
@@ -68,7 +74,7 @@ const CITIES = [
   // Spain & Portugal
   'Barcelona', 'Madrid', 'Malaga', 'Alicante', 'Valencia', 'Seville', 'Palma', 'Ibiza', 'Tenerife', 'Gran Canaria', 'Lanzarote', 'Fuerteventura', 'Girona', 'Reus', 'Santander', 'Bilbao', 'Santiago', 'Porto', 'Lisbon', 'Faro',
   // Germany & Austria
-  'Berlin', 'Frankfurt', 'Munich', 'Dusseldorf', 'Hamburg', 'Cologne', 'Stuttgart', 'Nuremberg', 'Bremen', 'Hannover', 'Leipzig', 'Dresden', 'Dortmund', 'Weeze', 'Memmingen', 'Baden', 'Vienna', 'Salzburg', 'Innsbruck', 'Graz',
+  'Berlin', 'Frankfurt', 'Munich', 'Dusseldorf', 'Hamburg', 'Cologne', 'Bonn', 'Cologne/Bonn', 'Stuttgart', 'Nuremberg', 'Bremen', 'Hannover', 'Leipzig', 'Dresden', 'Dortmund', 'Weeze', 'Memmingen', 'Baden', 'Vienna', 'Salzburg', 'Innsbruck', 'Graz', 'Hahn', 'Frankfurt-Hahn',
   // France & Benelux
   'Paris', 'Beauvais', 'Marseille', 'Nice', 'Lyon', 'Toulouse', 'Bordeaux', 'Nantes', 'Lille', 'Brussels', 'Charleroi', 'Amsterdam', 'Eindhoven', 'Rotterdam',
   // Central/Eastern Europe
@@ -108,6 +114,8 @@ const MONTH_MAP: Record<string, string> = {
 
 // Booking reference patterns - EasyJet uses 6-7 char codes like K7FJS1Z
 const BOOKING_REF_PATTERNS = [
+  // Ryanair: "Reservation: HIYFTL" (in subject or body)
+  /Reservation[:\s]+([A-Z0-9]{6})/gi,
   // "Your booking K7FJS1Z:" or "booking K7G7F5N"
   /(?:your\s+)?booking\s+([A-Z0-9]{6,7})[\s:,]/gi,
   // "Booking Reference K7G7F5N"
@@ -120,6 +128,8 @@ const BOOKING_REF_PATTERNS = [
   /PNR[:\s]*([A-Z0-9]{6})/gi,
   // "reference: K7FJS1Z"
   /reference[:\s]+([A-Z0-9]{6,7})/gi,
+  // Ryanair subject pattern: "HIYFTL | Getting ready"
+  /\b([A-Z0-9]{6})\s*\|/gi,
   // Standalone 6-7 char alphanumeric that looks like booking ref (starts with letter)
   /\b([A-Z][A-Z0-9]{5,6})\b/g,
 ];
@@ -310,6 +320,15 @@ export async function GET() {
           }
         }
 
+        // Pattern 5b: Ryanair "Your flight details for [City]" or "your trip to [City]"
+        if (!route) {
+          const flightDetailsMatch = textToSearch.match(new RegExp(`(?:flight\\s+details\\s+for|your\\s+trip\\s+to)\\s+(${CITIES}(?:/[A-Za-z]+)?)`, 'i'));
+          if (flightDetailsMatch) {
+            route = `→ ${flightDetailsMatch[1]}`;
+            console.log(`Route matched Ryanair flight details format: ${route}`);
+          }
+        }
+
         // Pattern 6: Ryanair format - IATA codes "DUB - STN" or "DUB → STN" or "DUB to STN"
         if (!route) {
           const iataMatch = textToSearch.match(/\b([A-Z]{3})\s*(?:to|→|-|–|>)\s*([A-Z]{3})\b/i);
@@ -320,7 +339,7 @@ export async function GET() {
               'DUB': 'Dublin', 'STN': 'London Stansted', 'LTN': 'London Luton', 'LGW': 'London Gatwick', 'LHR': 'London Heathrow',
               'BGY': 'Bergamo', 'MXP': 'Milan Malpensa', 'LIN': 'Milan Linate', 'FCO': 'Rome Fiumicino', 'CIA': 'Rome Ciampino',
               'BCN': 'Barcelona', 'MAD': 'Madrid', 'AGP': 'Malaga', 'ALC': 'Alicante', 'PMI': 'Palma',
-              'BER': 'Berlin', 'FRA': 'Frankfurt', 'MUC': 'Munich', 'CGN': 'Cologne', 'DUS': 'Dusseldorf',
+              'BER': 'Berlin', 'FRA': 'Frankfurt', 'MUC': 'Munich', 'CGN': 'Cologne/Bonn', 'DUS': 'Dusseldorf', 'HHN': 'Frankfurt-Hahn',
               'CDG': 'Paris CDG', 'ORY': 'Paris Orly', 'BVA': 'Paris Beauvais', 'MRS': 'Marseille', 'NCE': 'Nice',
               'AMS': 'Amsterdam', 'BRU': 'Brussels', 'CRL': 'Charleroi', 'EIN': 'Eindhoven',
               'VIE': 'Vienna', 'PRG': 'Prague', 'BUD': 'Budapest', 'WAW': 'Warsaw', 'KRK': 'Krakow',
