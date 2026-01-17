@@ -13,6 +13,19 @@ const AIRLINE_FROM_QUERIES = [
   'from:airbaltic.com',
   'from:klm.com',
   'from:airfrance.com',
+  // OTAs (Online Travel Agencies)
+  'from:trip.com',
+  'from:booking.com',
+  'from:expedia.com',
+  'from:skyscanner.com',
+  'from:kayak.com',
+  // More airlines
+  'from:pegasus.com',
+  'from:flypgs.com',
+  'from:bangkokair.com',
+  'from:turkishairlines.com',
+  'from:emirates.com',
+  'from:qatarairways.com',
 ];
 
 // Content-based search for forwarded emails
@@ -30,6 +43,11 @@ const AIRLINE_CONTENT_QUERIES = [
   '"ryanairmail.com"',       // Ryanair sender domain in forwarded headers
   '"Ryanair Travel Itinerary"', // Ryanair itinerary subject
   '"easyJet booking reference"', // EasyJet booking confirmation
+  // OTAs
+  '"Trip.com"',
+  '"Бронирование авиабилета подтверждено"', // Trip.com Russian subject
+  '"flight booking confirmed"',
+  '"электронные билеты выпущены"', // Trip.com Russian
 ];
 
 // Flight number patterns - more comprehensive
@@ -57,6 +75,44 @@ const FLIGHT_PATTERNS = [
   /\b(KL)\s?(\d{3,4})\b/gi,
   // Air France: "AF 1234"
   /\b(AF)\s?(\d{3,4})\b/gi,
+  // Pegasus Airlines: "PC 1234"
+  /\b(PC)\s?(\d{3,4})\b/gi,
+  // Bangkok Airways: "PG 184"
+  /\b(PG)\s?(\d{3,4})\b/gi,
+  // Turkish Airlines: "TK 1234"
+  /\b(TK)\s?(\d{3,4})\b/gi,
+  // Emirates: "EK 1234"
+  /\b(EK)\s?(\d{3,4})\b/gi,
+  // Qatar Airways: "QR 1234"
+  /\b(QR)\s?(\d{3,4})\b/gi,
+  // Aeroflot: "SU 1234"
+  /\b(SU)\s?(\d{3,4})\b/gi,
+  // S7 Airlines: "S7 1234"
+  /\b(S7)\s?(\d{3,4})\b/gi,
+  // Ural Airlines: "U6 1234"
+  /\b(U6)\s?(\d{3,4})\b/gi,
+  // Pobeda: "DP 1234"
+  /\b(DP)\s?(\d{3,4})\b/gi,
+  // Iberia: "IB 1234"
+  /\b(IB)\s?(\d{3,4})\b/gi,
+  // British Airways: "BA 1234"
+  /\b(BA)\s?(\d{3,4})\b/gi,
+  // Norwegian: "DY 1234"
+  /\b(DY)\s?(\d{3,4})\b/gi,
+  // SAS: "SK 1234"
+  /\b(SK)\s?(\d{3,4})\b/gi,
+  // Finnair: "AY 1234"
+  /\b(AY)\s?(\d{3,4})\b/gi,
+  // Swiss: "LX 1234"
+  /\b(LX)\s?(\d{3,4})\b/gi,
+  // Austrian: "OS 1234"
+  /\b(OS)\s?(\d{3,4})\b/gi,
+  // LOT Polish: "LO 1234"
+  /\b(LO)\s?(\d{3,4})\b/gi,
+  // TAP Portugal: "TP 1234"
+  /\b(TP)\s?(\d{3,4})\b/gi,
+  // Aegean: "A3 1234"
+  /\b(A3)\s?(\d{3,4})\b/gi,
 ];
 
 // City names for route detection (major European airports + Ryanair hubs)
@@ -77,8 +133,16 @@ const CITIES = [
   'Copenhagen', 'Stockholm', 'Gothenburg', 'Malmo', 'Oslo', 'Bergen', 'Helsinki', 'Riga', 'Tallinn', 'Vilnius', 'Kaunas',
   // Greece & Cyprus
   'Athens', 'Thessaloniki', 'Crete', 'Heraklion', 'Chania', 'Rhodes', 'Corfu', 'Santorini', 'Mykonos', 'Zakynthos', 'Kos', 'Paphos', 'Larnaca',
-  // Other
-  'Malta', 'Sofia', 'Bucharest', 'Belgrade', 'Marrakech', 'Agadir', 'Fes', 'Tangier', 'Tel Aviv', 'Amman', 'Eilat'
+  // Other European
+  'Malta', 'Sofia', 'Bucharest', 'Belgrade', 'Marrakech', 'Agadir', 'Fes', 'Tangier', 'Tel Aviv', 'Amman', 'Eilat',
+  // Turkey
+  'Istanbul', 'Стамбул', 'Antalya', 'Ankara', 'Izmir', 'Bodrum', 'Dalaman', 'Sabiha', 'Gökçen',
+  // Russia & CIS
+  'Moscow', 'Москва', 'Sheremetyevo', 'Domodedovo', 'Vnukovo', 'St. Petersburg', 'Saint Petersburg', 'Санкт-Петербург', 'Pulkovo', 'Пулково', 'Sochi', 'Kazan', 'Yekaterinburg', 'Novosibirsk', 'Krasnodar', 'Kaliningrad', 'Минск', 'Minsk', 'Kyiv', 'Київ', 'Boryspil',
+  // Asia
+  'Bangkok', 'Бангкок', 'Suvarnabhumi', 'Don Mueang', 'Phuket', 'Ko Samui', 'Samui', 'Ко Самуи', 'Chiang Mai', 'Krabi', 'Singapore', 'Сингапур', 'Kuala Lumpur', 'Bali', 'Denpasar', 'Jakarta', 'Hong Kong', 'Гонконг', 'Tokyo', 'Токио', 'Narita', 'Haneda', 'Seoul', 'Incheon', 'Beijing', 'Пекин', 'Shanghai', 'Шанхай', 'Dubai', 'Дубай', 'Abu Dhabi', 'Doha', 'Delhi', 'Mumbai', 'Goa',
+  // Transliterated Russian cities
+  'Милан', 'Рим', 'Париж', 'Лондон', 'Берлин', 'Барселона', 'Мадрид'
 ].join('|');
 // Route pattern: "Milan-Barcelona" or "Milan to Barcelona" or "Milan → Barcelona"
 const CITY_ROUTE_PATTERN = new RegExp(`(${CITIES})\\s*(?:to|→|-|–)\\s*(${CITIES})`, 'gi');
@@ -362,7 +426,17 @@ export async function GET() {
               'SNN': 'Shannon', 'ORK': 'Cork', 'BFS': 'Belfast',
               'MLA': 'Malta', 'SOF': 'Sofia', 'OTP': 'Bucharest', 'TFS': 'Tenerife', 'LPA': 'Gran Canaria', 'ACE': 'Lanzarote',
               'IBZ': 'Ibiza', 'VLC': 'Valencia', 'SVQ': 'Seville', 'ZAG': 'Zagreb', 'SPU': 'Split', 'DBV': 'Dubrovnik',
-              'RAK': 'Marrakech', 'AGA': 'Agadir', 'FEZ': 'Fes', 'TNG': 'Tangier'
+              'RAK': 'Marrakech', 'AGA': 'Agadir', 'FEZ': 'Fes', 'TNG': 'Tangier',
+              // Turkey
+              'IST': 'Istanbul', 'SAW': 'Istanbul Sabiha', 'AYT': 'Antalya', 'ADB': 'Izmir', 'BJV': 'Bodrum', 'DLM': 'Dalaman',
+              // Russia
+              'SVO': 'Moscow Sheremetyevo', 'DME': 'Moscow Domodedovo', 'VKO': 'Moscow Vnukovo', 'LED': 'St. Petersburg', 'AER': 'Sochi', 'KZN': 'Kazan', 'SVX': 'Yekaterinburg', 'KRR': 'Krasnodar', 'KGD': 'Kaliningrad',
+              // Asia
+              'BKK': 'Bangkok', 'DMK': 'Bangkok Don Mueang', 'USM': 'Ko Samui', 'HKT': 'Phuket', 'CNX': 'Chiang Mai', 'KBV': 'Krabi',
+              'SIN': 'Singapore', 'KUL': 'Kuala Lumpur', 'DPS': 'Bali', 'CGK': 'Jakarta',
+              'HKG': 'Hong Kong', 'NRT': 'Tokyo Narita', 'HND': 'Tokyo Haneda', 'ICN': 'Seoul Incheon',
+              'PEK': 'Beijing', 'PVG': 'Shanghai', 'DXB': 'Dubai', 'AUH': 'Abu Dhabi', 'DOH': 'Doha',
+              'DEL': 'Delhi', 'BOM': 'Mumbai', 'GOI': 'Goa'
             };
             const originCity = iataToCity[origin.toUpperCase()] || origin;
             const destCity = iataToCity[dest.toUpperCase()] || dest;
