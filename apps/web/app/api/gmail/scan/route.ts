@@ -17,12 +17,15 @@ const AIRLINE_QUERIES = [
 
 // Flight number patterns - more comprehensive
 const FLIGHT_PATTERNS = [
+  // EasyJet "YOUR FLIGHT" section: just "EJU3755" on its own line
+  /YOUR\s+FLIGHT\s+(?:[\s\S]{0,50}?)(EJU)(\d{3,4})/gi,
   // EasyJet subject format: "Milan-Barcelona, U2 3755" or "Lisbon-Milan, U2 7669"
-  /,\s*(U2)\s*(\d{3,4})\b/gi,
+  /,\s*(U2)\s+(\d{3,4})/gi,
   // EasyJet specific: "EZY1234" or "U2 1234" or "U21234" or "EJU1234"
   /\b(EZY)\s?(\d{3,4})\b/gi,
   /\b(EJU)\s?(\d{3,4})\b/gi,
-  /\b(U2)\s?(\d{3,4})\b/gi,
+  /\b(U2)\s+(\d{3,4})\b/gi,
+  /\b(U2)(\d{4})\b/gi,
   // Ryanair: "FR 1234"
   /\b(FR)\s?(\d{3,4})\b/gi,
   // Lufthansa: "LH 1234"
@@ -167,10 +170,17 @@ export async function GET() {
 
         // Extract flight number
         let flightNumber = '';
+
+        // Debug: log first 500 chars of text being searched
+        console.log('=== Searching in text (first 500 chars) ===');
+        console.log(textToSearch.substring(0, 500));
+        console.log('=== Subject:', subject);
+
         for (const pattern of FLIGHT_PATTERNS) {
           pattern.lastIndex = 0;
           const match = pattern.exec(textToSearch);
           if (match) {
+            console.log('Flight pattern matched:', pattern, 'Result:', match);
             // Normalize: remove spaces, uppercase
             flightNumber = `${match[1]}${match[2]}`.replace(/\s/g, '').toUpperCase();
             // Convert EZY/EJU to U2 for consistency
@@ -179,6 +189,10 @@ export async function GET() {
             }
             break;
           }
+        }
+
+        if (!flightNumber) {
+          console.log('No flight number found in:', subject);
         }
 
         // Extract flight date
