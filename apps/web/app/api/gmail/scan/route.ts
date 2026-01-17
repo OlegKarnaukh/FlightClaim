@@ -17,6 +17,8 @@ const AIRLINE_QUERIES = [
 
 // Flight number patterns - more comprehensive
 const FLIGHT_PATTERNS = [
+  // EasyJet subject format: "Milan-Barcelona, U2 3755" or "Lisbon-Milan, U2 7669"
+  /,\s*(U2)\s*(\d{3,4})\b/gi,
   // EasyJet specific: "EZY1234" or "U2 1234" or "U21234" or "EJU1234"
   /\b(EZY)\s?(\d{3,4})\b/gi,
   /\b(EJU)\s?(\d{3,4})\b/gi,
@@ -35,16 +37,17 @@ const FLIGHT_PATTERNS = [
   /\b(KL)\s?(\d{3,4})\b/gi,
   // Air France: "AF 1234"
   /\b(AF)\s?(\d{3,4})\b/gi,
-  // Generic: "Flight EZY1234" or "flight number: U2 1234"
-  /flight\s*(?:number)?[:\s]*(EZY|EJU|U2|FR|LH|W6|VY|BT|KL|AF)\s?(\d{3,4})/gi,
 ];
 
-// Airport codes pattern (3 letters)
-const AIRPORT_PATTERN = /\b([A-Z]{3})\s*(?:to|→|-|–)\s*([A-Z]{3})\b/gi;
-const CITY_ROUTE_PATTERN = /(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Dublin|Manchester|Bristol|Edinburgh|Glasgow|Naples|Venice|Porto|Malaga|Alicante|Faro|Nice|Lyon|Marseille|Munich|Frankfurt|Vienna|Prague|Budapest|Warsaw|Krakow|Riga|Tallinn|Vilnius|Stockholm|Copenhagen|Oslo|Helsinki)\s*(?:to|→|-|–|and)\s*(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Dublin|Manchester|Bristol|Edinburgh|Glasgow|Naples|Venice|Porto|Malaga|Alicante|Faro|Nice|Lyon|Marseille|Munich|Frankfurt|Vienna|Prague|Budapest|Warsaw|Krakow|Riga|Tallinn|Vilnius|Stockholm|Copenhagen|Oslo|Helsinki)/gi;
+// City names for route detection
+const CITIES = 'Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Dublin|Manchester|Bristol|Edinburgh|Glasgow|Naples|Venice|Porto|Malaga|Alicante|Faro|Nice|Lyon|Marseille|Munich|Frankfurt|Vienna|Prague|Budapest|Warsaw|Krakow|Riga|Tallinn|Vilnius|Stockholm|Copenhagen|Oslo|Helsinki|Luton|Gatwick|Stansted|Heathrow|Malpensa';
+// Route pattern: "Milan-Barcelona" or "Milan to Barcelona" or "Milan → Barcelona"
+const CITY_ROUTE_PATTERN = new RegExp(`(${CITIES})\\s*(?:to|→|-|–)\\s*(${CITIES})`, 'gi');
 
 // Date patterns - more comprehensive
 const DATE_PATTERNS = [
+  // EasyJet format: "Thu 06 Jun" or "Sat 25 May" (day of week + date + month)
+  /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/gi,
   // "25 May 2024" or "25 May, 2024"
   /(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[,]?\s+(\d{4})/gi,
   // "May 25, 2024"
@@ -189,18 +192,12 @@ export async function GET() {
           }
         }
 
-        // Extract route
+        // Extract route (only use city names to avoid false positives)
         let route = '';
-        AIRPORT_PATTERN.lastIndex = 0;
-        let airportMatch = AIRPORT_PATTERN.exec(textToSearch);
-        if (airportMatch) {
-          route = `${airportMatch[1]} → ${airportMatch[2]}`;
-        } else {
-          CITY_ROUTE_PATTERN.lastIndex = 0;
-          const cityMatch = CITY_ROUTE_PATTERN.exec(textToSearch);
-          if (cityMatch) {
-            route = `${cityMatch[1]} → ${cityMatch[2]}`;
-          }
+        CITY_ROUTE_PATTERN.lastIndex = 0;
+        const cityMatch = CITY_ROUTE_PATTERN.exec(textToSearch);
+        if (cityMatch) {
+          route = `${cityMatch[1]} → ${cityMatch[2]}`;
         }
 
         // Only add if we found something useful
