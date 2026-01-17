@@ -186,8 +186,12 @@ export async function GET() {
         // Extract route - try multiple patterns
         let route = '';
 
+        // Debug: show body text sample for route analysis
+        console.log(`Body sample for ${flightNumber}: ${bodyText.substring(0, 500).replace(/\s+/g, ' ')}`);
+
         // Pattern 1: "City-City, U2" format in full text (EasyJet email body header)
-        const cityDashMatch = textToSearch.match(/(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)\s*[-–]\s*(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)/i);
+        // Include multiple dash types: hyphen, en-dash, em-dash
+        const cityDashMatch = textToSearch.match(/(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)\s*[-–—]\s*(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)/i);
         if (cityDashMatch) {
           route = `${cityDashMatch[1]} → ${cityDashMatch[2]}`;
           console.log(`Route matched City-City format: ${route}`);
