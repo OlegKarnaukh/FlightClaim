@@ -3,8 +3,8 @@ import { getServerSession } from 'next-auth';
 import { google } from 'googleapis';
 import { authOptions } from '@/lib/auth';
 
-// Airlines we're looking for
-const AIRLINE_QUERIES = [
+// Airlines we're looking for - search by sender AND by content (for forwarded emails)
+const AIRLINE_FROM_QUERIES = [
   'from:ryanair.com',
   'from:easyjet.com',
   'from:lufthansa.com',
@@ -13,6 +13,23 @@ const AIRLINE_QUERIES = [
   'from:airbaltic.com',
   'from:klm.com',
   'from:airfrance.com',
+];
+
+// Content-based search for forwarded emails
+const AIRLINE_CONTENT_QUERIES = [
+  'subject:ryanair',
+  'subject:easyjet',
+  'subject:lufthansa',
+  'subject:"wizz air"',
+  'subject:vueling',
+  'subject:airbaltic',
+  'subject:klm',
+  'subject:"air france"',
+  // Also search body for booking confirmations
+  '"ryanair booking"',
+  '"easyjet booking"',
+  '"your flight" ryanair',
+  '"your flight" easyjet',
 ];
 
 // Flight number patterns - more comprehensive
@@ -42,8 +59,27 @@ const FLIGHT_PATTERNS = [
   /\b(AF)\s?(\d{3,4})\b/gi,
 ];
 
-// City names for route detection
-const CITIES = 'Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Dublin|Manchester|Bristol|Edinburgh|Glasgow|Naples|Venice|Porto|Malaga|Alicante|Faro|Nice|Lyon|Marseille|Munich|Frankfurt|Vienna|Prague|Budapest|Warsaw|Krakow|Riga|Tallinn|Vilnius|Stockholm|Copenhagen|Oslo|Helsinki|Luton|Gatwick|Stansted|Heathrow|Malpensa';
+// City names for route detection (major European airports + Ryanair hubs)
+const CITIES = [
+  // UK & Ireland
+  'London', 'Luton', 'Gatwick', 'Stansted', 'Heathrow', 'Manchester', 'Birmingham', 'Bristol', 'Edinburgh', 'Glasgow', 'Liverpool', 'Leeds', 'Newcastle', 'Belfast', 'Dublin', 'Cork', 'Shannon',
+  // Italy
+  'Milan', 'Malpensa', 'Bergamo', 'Rome', 'Fiumicino', 'Ciampino', 'Naples', 'Venice', 'Treviso', 'Bologna', 'Pisa', 'Florence', 'Turin', 'Bari', 'Catania', 'Palermo', 'Cagliari', 'Alghero', 'Olbia', 'Brindisi', 'Verona', 'Genoa', 'Trieste',
+  // Spain & Portugal
+  'Barcelona', 'Madrid', 'Malaga', 'Alicante', 'Valencia', 'Seville', 'Palma', 'Ibiza', 'Tenerife', 'Gran Canaria', 'Lanzarote', 'Fuerteventura', 'Girona', 'Reus', 'Santander', 'Bilbao', 'Santiago', 'Porto', 'Lisbon', 'Faro',
+  // Germany & Austria
+  'Berlin', 'Frankfurt', 'Munich', 'Dusseldorf', 'Hamburg', 'Cologne', 'Stuttgart', 'Nuremberg', 'Bremen', 'Hannover', 'Leipzig', 'Dresden', 'Dortmund', 'Weeze', 'Memmingen', 'Baden', 'Vienna', 'Salzburg', 'Innsbruck', 'Graz',
+  // France & Benelux
+  'Paris', 'Beauvais', 'Marseille', 'Nice', 'Lyon', 'Toulouse', 'Bordeaux', 'Nantes', 'Lille', 'Brussels', 'Charleroi', 'Amsterdam', 'Eindhoven', 'Rotterdam',
+  // Central/Eastern Europe
+  'Prague', 'Budapest', 'Warsaw', 'Krakow', 'Wroclaw', 'Gdansk', 'Poznan', 'Katowice', 'Bratislava', 'Vienna', 'Ljubljana', 'Zagreb', 'Split', 'Dubrovnik', 'Zadar', 'Pula',
+  // Nordics & Baltics
+  'Copenhagen', 'Stockholm', 'Gothenburg', 'Malmo', 'Oslo', 'Bergen', 'Helsinki', 'Riga', 'Tallinn', 'Vilnius', 'Kaunas',
+  // Greece & Cyprus
+  'Athens', 'Thessaloniki', 'Crete', 'Heraklion', 'Chania', 'Rhodes', 'Corfu', 'Santorini', 'Mykonos', 'Zakynthos', 'Kos', 'Paphos', 'Larnaca',
+  // Other
+  'Malta', 'Sofia', 'Bucharest', 'Belgrade', 'Marrakech', 'Agadir', 'Fes', 'Tangier', 'Tel Aviv', 'Amman', 'Eilat'
+].join('|');
 // Route pattern: "Milan-Barcelona" or "Milan to Barcelona" or "Milan → Barcelona"
 const CITY_ROUTE_PATTERN = new RegExp(`(${CITIES})\\s*(?:to|→|-|–)\\s*(${CITIES})`, 'gi');
 
@@ -121,7 +157,9 @@ export async function GET() {
     threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
     const afterDate = threeYearsAgo.toISOString().split('T')[0].replace(/-/g, '/');
 
-    const query = `(${AIRLINE_QUERIES.join(' OR ')}) after:${afterDate}`;
+    // Combine from: queries and content queries for comprehensive search
+    const allQueries = [...AIRLINE_FROM_QUERIES, ...AIRLINE_CONTENT_QUERIES];
+    const query = `(${allQueries.join(' OR ')}) after:${afterDate}`;
 
     console.log('Searching Gmail with query:', query);
 
@@ -219,7 +257,7 @@ export async function GET() {
         // Extract route - try multiple patterns
         let route = '';
 
-        const cityList = 'Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted|Porto|Naples|Venice|Vienna|Prague|Budapest';
+        // Use the global CITIES constant for route matching
 
         // Debug: search for city names in body to see what format they appear in
         const milanIdx = bodyText.toLowerCase().indexOf('milan');
@@ -230,7 +268,7 @@ export async function GET() {
         }
 
         // Pattern 1: "City [Airport] to City" format (EasyJet confirmation: "Milan Malpensa (T2) to Barcelona (Terminal 2C)")
-        const cityToMatch = textToSearch.match(new RegExp(`(${cityList})\\s+(?:Malpensa|Airport|Luton|Gatwick|Stansted|Heathrow)?\\s*(?:\\([^)]*\\))?\\s+to\\s+(${cityList})`, 'i'));
+        const cityToMatch = textToSearch.match(new RegExp(`(${CITIES})\\s+(?:Malpensa|Airport|Luton|Gatwick|Stansted|Heathrow)?\\s*(?:\\([^)]*\\))?\\s+to\\s+(${CITIES})`, 'i'));
         if (cityToMatch) {
           route = `${cityToMatch[1]} → ${cityToMatch[2]}`;
           console.log(`Route matched City to City format: ${route}`);
@@ -238,7 +276,7 @@ export async function GET() {
 
         // Pattern 2: "City-City, U2" format (EasyJet email header like "Milan-Barcelona, U2 3755")
         if (!route) {
-          const cityDashU2Match = textToSearch.match(new RegExp(`(${cityList})\\s*[-–—]\\s*(${cityList})\\s*,\\s*U2`, 'i'));
+          const cityDashU2Match = textToSearch.match(new RegExp(`(${CITIES})\\s*[-–—]\\s*(${CITIES})\\s*,\\s*U2`, 'i'));
           if (cityDashU2Match) {
             route = `${cityDashU2Match[1]} → ${cityDashU2Match[2]}`;
             console.log(`Route matched City-City, U2 format: ${route}`);
@@ -247,7 +285,7 @@ export async function GET() {
 
         // Pattern 3: Generic "City-City" anywhere
         if (!route) {
-          const cityDashMatch = textToSearch.match(new RegExp(`(${cityList})\\s*[-–—]\\s*(${cityList})`, 'i'));
+          const cityDashMatch = textToSearch.match(new RegExp(`(${CITIES})\\s*[-–—]\\s*(${CITIES})`, 'i'));
           if (cityDashMatch) {
             route = `${cityDashMatch[1]} → ${cityDashMatch[2]}`;
             console.log(`Route matched City-City format: ${route}`);
@@ -256,7 +294,7 @@ export async function GET() {
 
         // Pattern 4: "from X to Y" in full text
         if (!route) {
-          const fromToMatch = textToSearch.match(new RegExp(`from\\s+(${cityList})\\s+to\\s+(${cityList})`, 'i'));
+          const fromToMatch = textToSearch.match(new RegExp(`from\\s+(${CITIES})\\s+to\\s+(${CITIES})`, 'i'));
           if (fromToMatch) {
             route = `${fromToMatch[1]} → ${fromToMatch[2]}`;
             console.log(`Route matched from-to format: ${route}`);
@@ -265,10 +303,42 @@ export async function GET() {
 
         // Pattern 5: "flight to [City]" - extract at least destination (fallback)
         if (!route) {
-          const flightToMatch = textToSearch.match(new RegExp(`(?:your\\s+)?flight\\s+to\\s+(${cityList})`, 'i'));
+          const flightToMatch = textToSearch.match(new RegExp(`(?:your\\s+)?flight\\s+to\\s+(${CITIES})`, 'i'));
           if (flightToMatch) {
             route = `→ ${flightToMatch[1]}`;
             console.log(`Route matched destination only: ${route}`);
+          }
+        }
+
+        // Pattern 6: Ryanair format - IATA codes "DUB - STN" or "DUB → STN" or "DUB to STN"
+        if (!route) {
+          const iataMatch = textToSearch.match(/\b([A-Z]{3})\s*(?:to|→|-|–|>)\s*([A-Z]{3})\b/i);
+          if (iataMatch) {
+            const [, origin, dest] = iataMatch;
+            // Convert common IATA codes to city names
+            const iataToCity: Record<string, string> = {
+              'DUB': 'Dublin', 'STN': 'London Stansted', 'LTN': 'London Luton', 'LGW': 'London Gatwick', 'LHR': 'London Heathrow',
+              'BGY': 'Bergamo', 'MXP': 'Milan Malpensa', 'LIN': 'Milan Linate', 'FCO': 'Rome Fiumicino', 'CIA': 'Rome Ciampino',
+              'BCN': 'Barcelona', 'MAD': 'Madrid', 'AGP': 'Malaga', 'ALC': 'Alicante', 'PMI': 'Palma',
+              'BER': 'Berlin', 'FRA': 'Frankfurt', 'MUC': 'Munich', 'CGN': 'Cologne', 'DUS': 'Dusseldorf',
+              'CDG': 'Paris CDG', 'ORY': 'Paris Orly', 'BVA': 'Paris Beauvais', 'MRS': 'Marseille', 'NCE': 'Nice',
+              'AMS': 'Amsterdam', 'BRU': 'Brussels', 'CRL': 'Charleroi', 'EIN': 'Eindhoven',
+              'VIE': 'Vienna', 'PRG': 'Prague', 'BUD': 'Budapest', 'WAW': 'Warsaw', 'KRK': 'Krakow',
+              'CPH': 'Copenhagen', 'ARN': 'Stockholm', 'OSL': 'Oslo', 'HEL': 'Helsinki',
+              'RIX': 'Riga', 'TLL': 'Tallinn', 'VNO': 'Vilnius',
+              'ATH': 'Athens', 'SKG': 'Thessaloniki', 'HER': 'Heraklion',
+              'LIS': 'Lisbon', 'OPO': 'Porto', 'FAO': 'Faro',
+              'NAP': 'Naples', 'VCE': 'Venice', 'BLQ': 'Bologna', 'PSA': 'Pisa', 'CTA': 'Catania', 'PMO': 'Palermo',
+              'MAN': 'Manchester', 'BHX': 'Birmingham', 'BRS': 'Bristol', 'EDI': 'Edinburgh', 'GLA': 'Glasgow', 'LPL': 'Liverpool',
+              'SNN': 'Shannon', 'ORK': 'Cork', 'BFS': 'Belfast',
+              'MLA': 'Malta', 'SOF': 'Sofia', 'OTP': 'Bucharest', 'TFS': 'Tenerife', 'LPA': 'Gran Canaria', 'ACE': 'Lanzarote',
+              'IBZ': 'Ibiza', 'VLC': 'Valencia', 'SVQ': 'Seville', 'ZAG': 'Zagreb', 'SPU': 'Split', 'DBV': 'Dubrovnik',
+              'RAK': 'Marrakech', 'AGA': 'Agadir', 'FEZ': 'Fes', 'TNG': 'Tangier'
+            };
+            const originCity = iataToCity[origin.toUpperCase()] || origin;
+            const destCity = iataToCity[dest.toUpperCase()] || dest;
+            route = `${originCity} → ${destCity}`;
+            console.log(`Route matched IATA code format: ${route}`);
           }
         }
 
