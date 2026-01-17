@@ -186,12 +186,36 @@ export async function GET() {
           }
         }
 
-        // Extract route
+        // Extract route - try multiple patterns
         let route = '';
+
+        // First try standard City-City pattern
         CITY_ROUTE_PATTERN.lastIndex = 0;
         const cityMatch = CITY_ROUTE_PATTERN.exec(textToSearch);
         if (cityMatch) {
           route = `${cityMatch[1]} → ${cityMatch[2]}`;
+        }
+
+        // If no route found, try "fly to [City]" pattern in subject
+        if (!route) {
+          const flyToMatch = subject.match(/fly to (Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester)/i);
+          if (flyToMatch) {
+            // Try to find origin from "from [City]" in the text
+            const fromMatch = textToSearch.match(/from (Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester)/i);
+            if (fromMatch) {
+              route = `${fromMatch[1]} → ${flyToMatch[1]}`;
+            } else {
+              route = `→ ${flyToMatch[1]}`;
+            }
+          }
+        }
+
+        // Also try extracting from snippet which often has "from X to Y" format
+        if (!route) {
+          const snippetRouteMatch = snippet.match(/from (Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester) to (Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester)/i);
+          if (snippetRouteMatch) {
+            route = `${snippetRouteMatch[1]} → ${snippetRouteMatch[2]}`;
+          }
         }
 
         // If we have a booking ref, merge with existing data
