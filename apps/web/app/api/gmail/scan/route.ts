@@ -157,17 +157,27 @@ const DATE_PATTERNS_WITH_YEAR = [
   /(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[,]?\s+(\d{4})/gi,
   // "May 25, 2024"
   /(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})[,]?\s+(\d{4})/gi,
+  // Russian: "17 ноября 2024 г." or "17 нояб. 2024"
+  /(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря|янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек)[.\s]*(\d{4})/gi,
 ];
 
 // Date patterns without year (will infer year from email date)
 const DATE_PATTERNS_NO_YEAR = [
   // "Sun 09 Jun" or "Thu 06 Jun" or "09 Jun"
   /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)?\s*(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/gi,
+  // Russian without year: "17 ноября" or "17 нояб."
+  /(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря|янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек)/gi,
 ];
 
 const MONTH_MAP: Record<string, string> = {
   'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
-  'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+  'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12',
+  // Russian full month names (genitive case)
+  'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04', 'мая': '05', 'июня': '06',
+  'июля': '07', 'августа': '08', 'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12',
+  // Russian abbreviated
+  'янв': '01', 'фев': '02', 'мар': '03', 'апр': '04', 'май': '05', 'июн': '06',
+  'июл': '07', 'авг': '08', 'сен': '09', 'окт': '10', 'ноя': '11', 'дек': '12',
 };
 
 // Booking reference patterns - EasyJet uses 6-7 char codes like K7FJS1Z
@@ -306,13 +316,47 @@ export async function GET() {
         let flightDate = '';
         let hasYear = false;
 
+        // Helper to normalize date to dd/mm/yyyy format
+        const normalizeDate = (match: RegExpExecArray): string => {
+          const fullMatch = match[0];
+          // Check if it's a Russian date pattern (has Cyrillic month)
+          if (/[а-яА-Я]/.test(fullMatch)) {
+            const day = match[1].padStart(2, '0');
+            const monthStr = match[2].toLowerCase();
+            const month = MONTH_MAP[monthStr] || '01';
+            const year = match[3];
+            return `${day}/${month}/${year}`;
+          }
+          // Check if it's English month name pattern
+          if (/[a-zA-Z]/.test(fullMatch)) {
+            // Could be "25 May 2024" or "May 25, 2024"
+            const hasMonthFirst = /^[a-zA-Z]/.test(fullMatch.trim());
+            if (hasMonthFirst) {
+              const monthStr = match[1].toLowerCase().substring(0, 3);
+              const day = match[2].padStart(2, '0');
+              const year = match[3];
+              const month = MONTH_MAP[monthStr] || '01';
+              return `${day}/${month}/${year}`;
+            } else {
+              const day = match[1].padStart(2, '0');
+              const monthStr = match[2].toLowerCase().substring(0, 3);
+              const year = match[3];
+              const month = MONTH_MAP[monthStr] || '01';
+              return `${day}/${month}/${year}`;
+            }
+          }
+          // Already numeric format
+          return fullMatch;
+        };
+
         // First try patterns with year in flight context
         for (const pattern of DATE_PATTERNS_WITH_YEAR) {
           pattern.lastIndex = 0;
           const match = pattern.exec(flightContext);
           if (match) {
-            flightDate = match[0];
+            flightDate = normalizeDate(match);
             hasYear = true;
+            console.log(`Date found: "${match[0]}" -> normalized to "${flightDate}" for ${flightNumber}`);
             break;
           }
         }
@@ -411,7 +455,63 @@ export async function GET() {
           }
         }
 
-        // Pattern 6: IATA codes "BGY - CGN" in context
+        // Pattern 6: Trip.com Russian format - "Аэропорт [City] ... PCxxx ... Аэропорт [City]"
+        // Look for airport before and after flight number
+        if (!route) {
+          // Russian airport names mapping
+          const russianAirportToCity: Record<string, string> = {
+            'бергамо': 'Bergamo', 'милан': 'Milan', 'мальпенса': 'Milan',
+            'стамбул': 'Istanbul', 'сабихи': 'Istanbul', 'гёкчен': 'Istanbul',
+            'пулково': 'St. Petersburg', 'санкт-петербург': 'St. Petersburg',
+            'шереметьево': 'Moscow', 'домодедово': 'Moscow', 'внуково': 'Moscow',
+            'бангкок': 'Bangkok', 'суварнабхуми': 'Bangkok',
+            'самуи': 'Ko Samui', 'ко самуи': 'Ko Samui',
+            'пхукет': 'Phuket', 'барселона': 'Barcelona', 'рим': 'Rome',
+          };
+
+          // Find flight number position in context
+          const fnPos = flightContext.indexOf(flightNumber);
+          if (fnPos > 0) {
+            const beforeFlight = flightContext.substring(0, fnPos).toLowerCase();
+            const afterFlight = flightContext.substring(fnPos).toLowerCase();
+
+            // Look for "аэропорт [name]" pattern
+            let originCity = '';
+            let destCity = '';
+
+            // Find last airport mention before flight number
+            const beforeAirportMatch = beforeFlight.match(/аэропорт\s+([а-яё\s]+?)(?:\s+орио|\s+имени|\s+t\d|\s*$)/gi);
+            if (beforeAirportMatch) {
+              const lastMatch = beforeAirportMatch[beforeAirportMatch.length - 1];
+              const airportName = lastMatch.replace(/аэропорт\s+/i, '').replace(/\s+(орио|имени|t\d).*/i, '').trim().toLowerCase();
+              for (const [key, city] of Object.entries(russianAirportToCity)) {
+                if (airportName.includes(key)) {
+                  originCity = city;
+                  break;
+                }
+              }
+            }
+
+            // Find first airport mention after flight number
+            const afterAirportMatch = afterFlight.match(/аэропорт\s+([а-яё\s]+?)(?:\s+орио|\s+имени|\s+t\d|\s*пересадка|\s*\d)/i);
+            if (afterAirportMatch) {
+              const airportName = afterAirportMatch[1].trim().toLowerCase();
+              for (const [key, city] of Object.entries(russianAirportToCity)) {
+                if (airportName.includes(key)) {
+                  destCity = city;
+                  break;
+                }
+              }
+            }
+
+            if (originCity && destCity && originCity !== destCity) {
+              route = `${originCity} → ${destCity}`;
+              console.log(`Route matched Trip.com Russian format: ${route}`);
+            }
+          }
+        }
+
+        // Pattern 7: IATA codes "BGY - CGN" in context
         if (!route) {
           const iataMatch = flightContext.match(/\b([A-Z]{3})\s*(?:to|→|-|–|>)\s*([A-Z]{3})\b/i);
           if (iataMatch) {
