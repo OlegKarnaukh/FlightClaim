@@ -183,7 +183,12 @@
   - OAuth Clients: iOS + Web созданы
   - Scope: gmail.readonly добавлен
   - Test user: добавлен
-- [ ] **NEXT:** Интегрировать NextAuth.js с Google OAuth
+- [x] **NextAuth.js интегрирован** — Google OAuth работает
+- [x] **🚀 Деплой на Railway:**
+  - URL: https://flightclaim-production.up.railway.app
+  - Авторизация работает
+  - Gmail Token получен
+- [ ] **NEXT:** Реализовать сканирование Gmail для поиска рейсов
 
 ---
 
@@ -239,4 +244,4 @@ DATABASE_URL=
 
 ---
 
-**Последнее обновление:** 2026-01-17 (Google Cloud configured)
+**Последнее обновление:** 2026-01-17 (Railway deployed, Auth working!)
