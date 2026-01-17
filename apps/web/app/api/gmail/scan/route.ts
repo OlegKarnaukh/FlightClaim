@@ -48,7 +48,7 @@ const CITIES = 'Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam
 const CITY_ROUTE_PATTERN = new RegExp(`(${CITIES})\\s*(?:to|→|-|–)\\s*(${CITIES})`, 'gi');
 
 // Date patterns - prefer formats with year
-const DATE_PATTERNS = [
+const DATE_PATTERNS_WITH_YEAR = [
   // "25-05-2024" or "25/05/2024" or "25.05.2024" (preferred - has year)
   /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g,
   // "2024-05-25"
@@ -58,6 +58,17 @@ const DATE_PATTERNS = [
   // "May 25, 2024"
   /(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})[,]?\s+(\d{4})/gi,
 ];
+
+// Date patterns without year (will infer year from email date)
+const DATE_PATTERNS_NO_YEAR = [
+  // "Sun 09 Jun" or "Thu 06 Jun" or "09 Jun"
+  /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)?\s*(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/gi,
+];
+
+const MONTH_MAP: Record<string, string> = {
+  'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
+  'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+};
 
 // Booking reference patterns - EasyJet uses 6-7 char codes like K7FJS1Z
 const BOOKING_REF_PATTERNS = [
@@ -172,14 +183,36 @@ export async function GET() {
         // Skip if no flight number found
         if (!flightNumber) continue;
 
-        // Extract flight date
+        // Extract flight date - prefer dates with year
         let flightDate = '';
-        for (const pattern of DATE_PATTERNS) {
+        let hasYear = false;
+
+        // First try patterns with year
+        for (const pattern of DATE_PATTERNS_WITH_YEAR) {
           pattern.lastIndex = 0;
           const match = pattern.exec(textToSearch);
           if (match) {
             flightDate = match[0];
+            hasYear = true;
             break;
+          }
+        }
+
+        // If no date with year found, try patterns without year
+        if (!flightDate) {
+          for (const pattern of DATE_PATTERNS_NO_YEAR) {
+            pattern.lastIndex = 0;
+            const match = pattern.exec(textToSearch);
+            if (match) {
+              const day = match[1].padStart(2, '0');
+              const monthStr = match[2].toLowerCase();
+              const month = MONTH_MAP[monthStr] || '01';
+              // Infer year from email received date
+              const emailYear = date ? new Date(date).getFullYear() : new Date().getFullYear();
+              flightDate = `${day}/${month}/${emailYear}`;
+              console.log(`Inferred date with year: ${flightDate} from "${match[0]}"`);
+              break;
+            }
           }
         }
 
