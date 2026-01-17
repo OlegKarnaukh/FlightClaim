@@ -196,14 +196,23 @@ export async function GET() {
           console.log(`City context for ${flightNumber}: "${bodyText.substring(startIdx, startIdx + 100).replace(/\s+/g, ' ')}"`);
         }
 
-        // Pattern 1: "City-City, U2" format (EasyJet email header like "Milan-Barcelona, U2 3755")
-        const cityDashU2Match = textToSearch.match(new RegExp(`(${cityList})\\s*[-–—]\\s*(${cityList})\\s*,\\s*U2`, 'i'));
-        if (cityDashU2Match) {
-          route = `${cityDashU2Match[1]} → ${cityDashU2Match[2]}`;
-          console.log(`Route matched City-City, U2 format: ${route}`);
+        // Pattern 1: "City [Airport] to City" format (EasyJet confirmation: "Milan Malpensa (T2) to Barcelona (Terminal 2C)")
+        const cityToMatch = textToSearch.match(new RegExp(`(${cityList})\\s+(?:Malpensa|Airport|Luton|Gatwick|Stansted|Heathrow)?\\s*(?:\\([^)]*\\))?\\s+to\\s+(${cityList})`, 'i'));
+        if (cityToMatch) {
+          route = `${cityToMatch[1]} → ${cityToMatch[2]}`;
+          console.log(`Route matched City to City format: ${route}`);
         }
 
-        // Pattern 2: Generic "City-City" anywhere
+        // Pattern 2: "City-City, U2" format (EasyJet email header like "Milan-Barcelona, U2 3755")
+        if (!route) {
+          const cityDashU2Match = textToSearch.match(new RegExp(`(${cityList})\\s*[-–—]\\s*(${cityList})\\s*,\\s*U2`, 'i'));
+          if (cityDashU2Match) {
+            route = `${cityDashU2Match[1]} → ${cityDashU2Match[2]}`;
+            console.log(`Route matched City-City, U2 format: ${route}`);
+          }
+        }
+
+        // Pattern 3: Generic "City-City" anywhere
         if (!route) {
           const cityDashMatch = textToSearch.match(new RegExp(`(${cityList})\\s*[-–—]\\s*(${cityList})`, 'i'));
           if (cityDashMatch) {
@@ -212,7 +221,7 @@ export async function GET() {
           }
         }
 
-        // Pattern 3: "from X to Y" in full text
+        // Pattern 4: "from X to Y" in full text
         if (!route) {
           const fromToMatch = textToSearch.match(new RegExp(`from\\s+(${cityList})\\s+to\\s+(${cityList})`, 'i'));
           if (fromToMatch) {
@@ -221,7 +230,7 @@ export async function GET() {
           }
         }
 
-        // Pattern 4: "flight to [City]" - extract at least destination
+        // Pattern 5: "flight to [City]" - extract at least destination (fallback)
         if (!route) {
           const flightToMatch = textToSearch.match(new RegExp(`(?:your\\s+)?flight\\s+to\\s+(${cityList})`, 'i'));
           if (flightToMatch) {
@@ -235,14 +244,16 @@ export async function GET() {
         // Group by flight number
         const existing = flightData.get(flightNumber);
         if (existing) {
-          // Merge: fill in missing data
+          // Merge: fill in missing data, prefer full data over partial
           if (bookingRef && existing.bookingRef === '-') {
             existing.bookingRef = bookingRef;
           }
-          if (flightDate && existing.date === 'Check email') {
+          // Prefer dates with year (contains /)
+          if (flightDate && (existing.date === 'Check email' || !existing.date.includes('/'))) {
             existing.date = flightDate;
           }
-          if (route && existing.route === 'Check email') {
+          // Prefer full route (City → City) over partial (→ City)
+          if (route && (existing.route === 'Check email' || (existing.route.startsWith('→') && !route.startsWith('→')))) {
             existing.route = route;
           }
         } else {
