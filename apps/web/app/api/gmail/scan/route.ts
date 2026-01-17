@@ -234,7 +234,7 @@ export async function GET() {
     const response = await gmail.users.messages.list({
       userId: 'me',
       q: query,
-      maxResults: 50,
+      maxResults: 100, // Increased to catch more flight emails
     });
 
     const messages = response.data.messages || [];
@@ -243,8 +243,8 @@ export async function GET() {
     // Group by flight number (not booking ref) - each flight can have different delay
     const flightData: Map<string, FlightInfo> = new Map();
 
-    // Get details for each message
-    for (const msg of messages.slice(0, 30)) {
+    // Get details for each message (process up to 50 for performance)
+    for (const msg of messages.slice(0, 50)) {
       try {
         const detail = await gmail.users.messages.get({
           userId: 'me',
@@ -297,9 +297,9 @@ export async function GET() {
         for (const flightMatch of flightMatches) {
           const flightNumber = flightMatch.flightNumber;
 
-          // Get context around this flight number (500 chars before and after)
-          const contextStart = Math.max(0, flightMatch.position - 500);
-          const contextEnd = Math.min(textToSearch.length, flightMatch.position + 500);
+          // Get context around this flight number (1500 chars before and after for better coverage)
+          const contextStart = Math.max(0, flightMatch.position - 1500);
+          const contextEnd = Math.min(textToSearch.length, flightMatch.position + 1500);
           const flightContext = textToSearch.substring(contextStart, contextEnd);
 
         // Extract flight date - prefer dates with year, search in context first
@@ -450,6 +450,39 @@ export async function GET() {
             const destCity = iataToCity[dest.toUpperCase()] || dest;
             route = `${originCity} → ${destCity}`;
             console.log(`Route matched IATA code format: ${route}`);
+          }
+        }
+
+        // FALLBACK: If no route/date found in context, search full email text
+        if (!route || !flightDate) {
+          console.log(`Fallback to full text search for ${flightNumber}`);
+
+          if (!route) {
+            // Try to find route in full text
+            const fullRouteMatch = textToSearch.match(new RegExp(`(${CITIES})\\s*\\([^)]+\\)\\s*[-–—]\\s*(${CITIES})`, 'i'));
+            if (fullRouteMatch) {
+              route = `${fullRouteMatch[1]} → ${fullRouteMatch[2]}`;
+              console.log(`Fallback route matched: ${route}`);
+            } else {
+              const fullCityDash = textToSearch.match(new RegExp(`(${CITIES})\\s*[-–—]\\s*(${CITIES})`, 'i'));
+              if (fullCityDash) {
+                route = `${fullCityDash[1]} → ${fullCityDash[2]}`;
+                console.log(`Fallback route (city-city): ${route}`);
+              }
+            }
+          }
+
+          if (!flightDate) {
+            // Try to find date in full text
+            for (const pattern of DATE_PATTERNS_WITH_YEAR) {
+              pattern.lastIndex = 0;
+              const match = pattern.exec(textToSearch);
+              if (match) {
+                flightDate = match[0];
+                console.log(`Fallback date: ${flightDate}`);
+                break;
+              }
+            }
           }
         }
 
