@@ -39,8 +39,8 @@
 | **Frontend Mobile** | Expo (React Native) | FREE |
 | **Frontend Web** | Next.js + TypeScript | FREE |
 | **Backend/API** | Next.js API Routes | FREE |
-| **Hosting** | Vercel | FREE → $7/мес |
-| **Database** | Supabase / Vercel Postgres | FREE tier |
+| **Hosting** | Railway | ✅ Уже оплачен |
+| **Database** | Railway Postgres | ✅ Встроен в Railway |
 | **Auth** | Google OAuth 2.0 | FREE |
 | **Email Parsing** | Gmail API (readonly) | FREE |
 | **Flight Data** | AeroDataBox (RapidAPI) | FREE tier (1000 req/мес) |
@@ -52,7 +52,14 @@
 | **Vibe Coding** | Claude | $20/мес |
 | **Version Control** | GitHub | FREE |
 
-**Итого на старте:** ~$27-37/мес
+**Итого на старте:** ~$30/мес (Claude + OpenAI)
+
+### Почему Railway вместо Vercel
+- ✅ **Нет лимита на время выполнения** — критично для Gmail парсинга и PDF генерации
+- ✅ **Postgres встроен** — не нужен отдельный сервис для БД
+- ✅ **Уже оплачен** — экономия $7-20/мес
+- ✅ **Docker поддержка** — гибкость для будущих задач
+- ✅ **Background workers** — можно запускать долгие процессы
 
 ### Почему Web-стек вместо Flutter
 - ✅ Разработка в браузере (без установки SDK)
@@ -164,6 +171,7 @@
 - [x] Изучен оригинальный документ ТЗ (FlightClaim Master Documentation)
 - [x] Принято решение: Web-стек (Expo + Next.js) вместо Flutter
 - [x] Создан PROJECT.md для отслеживания прогресса
+- [x] Выбран хостинг: **Railway** (вместо Vercel) — уже оплачен, нет лимитов на время выполнения
 - [ ] **NEXT:** Создать структуру монорепо
 
 ---
@@ -203,9 +211,10 @@ DATABASE_URL=
 
 1. **Web-first подход** — быстрее разработка, проще тестирование
 2. **Монорепо** — shared code между web и mobile
-3. **Pay-per-claim** — мгновенная выручка вместо % комиссии
-4. **Regex + AI fallback** — надёжность + гибкость парсинга
-5. **Минимум UI** — фокус на функциональность для MVP
+3. **Railway вместо Vercel** — нет лимитов, встроенная БД, уже оплачен
+4. **Pay-per-claim** — мгновенная выручка вместо % комиссии
+5. **Regex + AI fallback** — надёжность + гибкость парсинга
+6. **Минимум UI** — фокус на функциональность для MVP
 
 ---
 
@@ -219,4 +228,4 @@ DATABASE_URL=
 
 ---
 
-**Последнее обновление:** 2026-01-17
+**Последнее обновление:** 2026-01-17 (Railway selected)
