@@ -186,32 +186,39 @@ export async function GET() {
         // Extract route - try multiple patterns
         let route = '';
 
-        // Debug: show body text sample for route analysis
-        console.log(`Body sample for ${flightNumber}: ${bodyText.substring(0, 500).replace(/\s+/g, ' ')}`);
+        const cityList = 'Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted|Porto|Naples|Venice|Vienna|Prague|Budapest';
 
-        // Pattern 1: "City-City, U2" format in full text (EasyJet email body header)
-        // Include multiple dash types: hyphen, en-dash, em-dash
-        const cityDashMatch = textToSearch.match(/(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)\s*[-–—]\s*(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)/i);
-        if (cityDashMatch) {
-          route = `${cityDashMatch[1]} → ${cityDashMatch[2]}`;
-          console.log(`Route matched City-City format: ${route}`);
+        // Pattern 1: "City-City, U2" format (EasyJet email header like "Milan-Barcelona, U2 3755")
+        const cityDashU2Match = textToSearch.match(new RegExp(`(${cityList})\\s*[-–—]\\s*(${cityList})\\s*,\\s*U2`, 'i'));
+        if (cityDashU2Match) {
+          route = `${cityDashU2Match[1]} → ${cityDashU2Match[2]}`;
+          console.log(`Route matched City-City, U2 format: ${route}`);
         }
 
-        // Pattern 2: "from X to Y" in full text
+        // Pattern 2: Generic "City-City" anywhere
         if (!route) {
-          const fromToMatch = textToSearch.match(/from\s+(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)\s+to\s+(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)/i);
+          const cityDashMatch = textToSearch.match(new RegExp(`(${cityList})\\s*[-–—]\\s*(${cityList})`, 'i'));
+          if (cityDashMatch) {
+            route = `${cityDashMatch[1]} → ${cityDashMatch[2]}`;
+            console.log(`Route matched City-City format: ${route}`);
+          }
+        }
+
+        // Pattern 3: "from X to Y" in full text
+        if (!route) {
+          const fromToMatch = textToSearch.match(new RegExp(`from\\s+(${cityList})\\s+to\\s+(${cityList})`, 'i'));
           if (fromToMatch) {
             route = `${fromToMatch[1]} → ${fromToMatch[2]}`;
             console.log(`Route matched from-to format: ${route}`);
           }
         }
 
-        // Pattern 3: City-City in subject
+        // Pattern 4: "flight to [City]" - extract at least destination
         if (!route) {
-          const subjectRouteMatch = subject.match(/(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)\s*[-–]\s*(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)/i);
-          if (subjectRouteMatch) {
-            route = `${subjectRouteMatch[1]} → ${subjectRouteMatch[2]}`;
-            console.log(`Route matched from subject: ${route}`);
+          const flightToMatch = textToSearch.match(new RegExp(`(?:your\\s+)?flight\\s+to\\s+(${cityList})`, 'i'));
+          if (flightToMatch) {
+            route = `→ ${flightToMatch[1]}`;
+            console.log(`Route matched destination only: ${route}`);
           }
         }
 
