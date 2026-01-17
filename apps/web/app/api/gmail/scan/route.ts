@@ -275,7 +275,41 @@ export async function GET() {
     }
 
     // Convert map to array
-    const flights = Array.from(flightData.values());
+    let flights = Array.from(flightData.values());
+
+    // Post-process: infer return routes from same booking
+    // Group flights by booking ref
+    const bookingGroups = new Map<string, typeof flights>();
+    for (const flight of flights) {
+      if (flight.bookingRef && flight.bookingRef !== '-') {
+        const group = bookingGroups.get(flight.bookingRef) || [];
+        group.push(flight);
+        bookingGroups.set(flight.bookingRef, group);
+      }
+    }
+
+    // For flights with partial route (→ City), try to infer full route from same booking
+    for (const [bookingRef, group] of bookingGroups) {
+      if (group.length >= 2) {
+        // Find flight with full route
+        const withFullRoute = group.find(f => f.route.includes('→') && !f.route.startsWith('→'));
+        // Find flight with partial route
+        const withPartialRoute = group.find(f => f.route.startsWith('→'));
+
+        if (withFullRoute && withPartialRoute) {
+          // Parse the full route
+          const routeMatch = withFullRoute.route.match(/(.+)\s*→\s*(.+)/);
+          if (routeMatch) {
+            const [, origin, destination] = routeMatch;
+            // If partial route destination matches full route origin, this is the return flight
+            if (withPartialRoute.route === `→ ${origin.trim()}`) {
+              withPartialRoute.route = `${destination.trim()} → ${origin.trim()}`;
+              console.log(`Inferred return route for ${withPartialRoute.flightNumber}: ${withPartialRoute.route}`);
+            }
+          }
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,
