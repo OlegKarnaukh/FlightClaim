@@ -25,17 +25,11 @@ const AIRLINE_CONTENT_QUERIES = [
   'subject:airbaltic',
   'subject:klm',
   'subject:"air france"',
-  // Also search body for booking confirmations
-  '"ryanair booking"',
-  '"easyjet booking"',
-  '"your flight" ryanair',
-  '"your flight" easyjet',
   // For forwarded emails - search by content patterns
-  '"ryanair DAC"',           // Ryanair footer
+  '"Ryanair DAC"',           // Ryanair footer
   '"ryanairmail.com"',       // Ryanair sender domain in forwarded headers
-  '"flight details for"',    // Ryanair email content
-  'reservation ryanair',     // Ryanair reservation
-  '"your trip to"',          // Ryanair subject pattern
+  '"Ryanair Travel Itinerary"', // Ryanair itinerary subject
+  '"easyJet booking reference"', // EasyJet booking confirmation
 ];
 
 // Flight number patterns - more comprehensive
@@ -214,22 +208,29 @@ export async function GET() {
           }
         }
 
-        // Extract flight number
-        let flightNumber = '';
+        // Extract ALL flight numbers from this email
+        const flightNumbers: string[] = [];
         for (const pattern of FLIGHT_PATTERNS) {
           pattern.lastIndex = 0;
-          const match = pattern.exec(textToSearch);
-          if (match) {
-            flightNumber = `${match[1]}${match[2]}`.replace(/\s/g, '').toUpperCase();
-            if (flightNumber.startsWith('EZY') || flightNumber.startsWith('EJU')) {
-              flightNumber = 'U2' + flightNumber.slice(3);
+          let match;
+          while ((match = pattern.exec(textToSearch)) !== null) {
+            let fn = `${match[1]}${match[2]}`.replace(/\s/g, '').toUpperCase();
+            if (fn.startsWith('EZY') || fn.startsWith('EJU')) {
+              fn = 'U2' + fn.slice(3);
             }
-            break;
+            if (!flightNumbers.includes(fn)) {
+              flightNumbers.push(fn);
+            }
           }
         }
 
-        // Skip if no flight number found
-        if (!flightNumber) continue;
+        // Skip if no flight numbers found
+        if (flightNumbers.length === 0) continue;
+
+        console.log(`Found ${flightNumbers.length} flight(s) in email: ${flightNumbers.join(', ')}`);
+
+        // Process each flight number found in this email
+        for (const flightNumber of flightNumbers) {
 
         // Extract flight date - prefer dates with year
         let flightDate = '';
@@ -293,7 +294,16 @@ export async function GET() {
           }
         }
 
-        // Pattern 3: Generic "City-City" anywhere
+        // Pattern 3: Ryanair format "Milan (Bergamo) - Cologne (Bonn)" with airport in parentheses
+        if (!route) {
+          const ryanairRouteMatch = textToSearch.match(new RegExp(`(${CITIES})\\s*\\([^)]+\\)\\s*[-–—]\\s*(${CITIES})`, 'i'));
+          if (ryanairRouteMatch) {
+            route = `${ryanairRouteMatch[1]} → ${ryanairRouteMatch[2]}`;
+            console.log(`Route matched Ryanair City (Airport) - City format: ${route}`);
+          }
+        }
+
+        // Pattern 3b: Generic "City-City" anywhere
         if (!route) {
           const cityDashMatch = textToSearch.match(new RegExp(`(${CITIES})\\s*[-–—]\\s*(${CITIES})`, 'i'));
           if (cityDashMatch) {
@@ -391,6 +401,7 @@ export async function GET() {
             receivedAt: date,
           });
         }
+        } // end for flightNumber loop
       } catch (err) {
         console.error('Error fetching message:', err);
       }
