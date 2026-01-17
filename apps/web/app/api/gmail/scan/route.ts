@@ -536,6 +536,20 @@ export async function GET() {
       }
     }
 
+    // Helper to parse date string to comparable value
+    const parseFlightDate = (dateStr: string): number => {
+      if (!dateStr || dateStr === 'Check email') return 0;
+      // Try "dd/mm/yyyy" or "dd.mm.yyyy" or "dd-mm-yyyy"
+      const match = dateStr.match(/(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})/);
+      if (match) {
+        const [, day, month, year] = match;
+        return new Date(parseInt(year), parseInt(month) - 1, parseInt(day)).getTime();
+      }
+      // Try parsing as-is
+      const parsed = Date.parse(dateStr);
+      return isNaN(parsed) ? 0 : parsed;
+    };
+
     // For flights with partial route (→ City), try to infer full route from same booking
     for (const [bookingRef, group] of bookingGroups) {
       if (group.length >= 2) {
@@ -553,6 +567,30 @@ export async function GET() {
             if (withPartialRoute.route === `→ ${origin.trim()}`) {
               withPartialRoute.route = `${destination.trim()} → ${origin.trim()}`;
               console.log(`Inferred return route for ${withPartialRoute.flightNumber}: ${withPartialRoute.route}`);
+            }
+          }
+        }
+
+        // NEW: Handle case where both flights have identical routes (fallback found same route for both)
+        // If two flights have the same "A → B" route but different dates, the later one is return "B → A"
+        const flightsWithSameRoute = group.filter(f => f.route.includes('→') && !f.route.startsWith('→'));
+        if (flightsWithSameRoute.length === 2) {
+          const [flight1, flight2] = flightsWithSameRoute;
+          if (flight1.route === flight2.route) {
+            // Routes are identical - one should be the return flight
+            const date1 = parseFlightDate(flight1.date);
+            const date2 = parseFlightDate(flight2.date);
+
+            // The later flight is the return
+            const laterFlight = date1 > date2 ? flight1 : date2 > date1 ? flight2 : null;
+
+            if (laterFlight) {
+              const routeMatch = laterFlight.route.match(/(.+)\s*→\s*(.+)/);
+              if (routeMatch) {
+                const [, origin, destination] = routeMatch;
+                laterFlight.route = `${destination.trim()} → ${origin.trim()}`;
+                console.log(`Fixed return route for ${laterFlight.flightNumber}: ${laterFlight.route} (later date)`);
+              }
             }
           }
         }
