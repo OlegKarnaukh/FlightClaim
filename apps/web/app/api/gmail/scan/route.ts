@@ -10,28 +10,65 @@ const AIRLINE_QUERIES = [
   'from:lufthansa.com',
   'from:wizzair.com',
   'from:vueling.com',
-  'from:booking@airbaltic.com',
+  'from:airbaltic.com',
   'from:klm.com',
   'from:airfrance.com',
 ];
 
-// Flight number patterns for different airlines
+// Flight number patterns - more comprehensive
 const FLIGHT_PATTERNS = [
-  /\b(FR|U2|LH|W6|VY|BT|KL|AF)\s?(\d{3,4})\b/gi,  // Standard IATA codes
-  /flight[:\s]+([A-Z]{2})\s?(\d{3,4})/gi,          // "Flight: XX1234"
-  /booking.*?([A-Z]{2})\s?(\d{3,4})/gi,            // "Booking...XX1234"
+  // EasyJet specific: "EZY1234" or "U2 1234" or "U21234"
+  /\b(EZY|EJU|U2)\s?(\d{3,4})\b/gi,
+  // Ryanair: "FR 1234"
+  /\b(FR)\s?(\d{3,4})\b/gi,
+  // Lufthansa: "LH 1234"
+  /\b(LH)\s?(\d{3,4})\b/gi,
+  // Wizz Air: "W6 1234" or "W61234"
+  /\b(W6|W9)\s?(\d{3,4})\b/gi,
+  // Vueling: "VY 1234"
+  /\b(VY)\s?(\d{3,4})\b/gi,
+  // airBaltic: "BT 1234"
+  /\b(BT)\s?(\d{3,4})\b/gi,
+  // KLM: "KL 1234"
+  /\b(KL)\s?(\d{3,4})\b/gi,
+  // Air France: "AF 1234"
+  /\b(AF)\s?(\d{3,4})\b/gi,
+  // Generic: "Flight EZY1234" or "flight number: U2 1234"
+  /flight\s*(?:number)?[:\s]*([A-Z]{2,3})\s?(\d{3,4})/gi,
+  // "HT3756" style (some easyJet codes)
+  /\b(HT|EC)\s?(\d{3,4})\b/gi,
 ];
 
-// Date patterns
+// Airport codes pattern (3 letters)
+const AIRPORT_PATTERN = /\b([A-Z]{3})\s*(?:to|→|-|–)\s*([A-Z]{3})\b/gi;
+const CITY_ROUTE_PATTERN = /(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Dublin|Manchester|Bristol|Edinburgh|Glasgow|Naples|Venice|Porto|Malaga|Alicante|Faro|Nice|Lyon|Marseille|Munich|Frankfurt|Vienna|Prague|Budapest|Warsaw|Krakow|Riga|Tallinn|Vilnius|Stockholm|Copenhagen|Oslo|Helsinki)\s*(?:to|→|-|–|and)\s*(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Dublin|Manchester|Bristol|Edinburgh|Glasgow|Naples|Venice|Porto|Malaga|Alicante|Faro|Nice|Lyon|Marseille|Munich|Frankfurt|Vienna|Prague|Budapest|Warsaw|Krakow|Riga|Tallinn|Vilnius|Stockholm|Copenhagen|Oslo|Helsinki)/gi;
+
+// Date patterns - more comprehensive
 const DATE_PATTERNS = [
-  /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/g,  // DD/MM/YYYY or DD-MM-YYYY
-  /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{2,4})/gi,
+  // "25 May 2024" or "25 May, 2024"
+  /(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[,]?\s+(\d{4})/gi,
+  // "May 25, 2024"
+  /(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})[,]?\s+(\d{4})/gi,
+  // "25/05/2024" or "25-05-2024" or "25.05.2024"
+  /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g,
+  // "2024-05-25"
+  /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/g,
+];
+
+// Booking reference patterns
+const BOOKING_REF_PATTERNS = [
+  /booking\s*(?:reference|ref|number|code)?[:\s]*([A-Z0-9]{5,8})/gi,
+  /confirmation[:\s]*([A-Z0-9]{5,8})/gi,
+  /PNR[:\s]*([A-Z0-9]{5,8})/gi,
+  /reference[:\s]*([A-Z0-9]{5,8})/gi,
 ];
 
 interface FlightInfo {
   id: string;
   flightNumber: string;
   date: string;
+  route: string;
+  bookingRef: string;
   subject: string;
   from: string;
   snippet: string;
@@ -49,7 +86,6 @@ export async function GET() {
       );
     }
 
-    // Create OAuth2 client with access token
     const oauth2Client = new google.auth.OAuth2();
     oauth2Client.setCredentials({ access_token: session.accessToken });
 
@@ -74,15 +110,15 @@ export async function GET() {
     console.log(`Found ${messages.length} messages`);
 
     const flights: FlightInfo[] = [];
+    const seenBookingRefs = new Set<string>();
 
-    // Get details for each message
-    for (const msg of messages.slice(0, 20)) { // Limit to 20 for now
+    // Get details for each message - now with FULL body
+    for (const msg of messages.slice(0, 30)) {
       try {
         const detail = await gmail.users.messages.get({
           userId: 'me',
           id: msg.id!,
-          format: 'metadata',
-          metadataHeaders: ['Subject', 'From', 'Date'],
+          format: 'full', // Get full message including body
         });
 
         const headers = detail.data.payload?.headers || [];
@@ -91,39 +127,86 @@ export async function GET() {
         const date = headers.find(h => h.name === 'Date')?.value || '';
         const snippet = detail.data.snippet || '';
 
-        // Try to extract flight number from subject or snippet
-        let flightNumber = '';
-        const textToSearch = `${subject} ${snippet}`;
+        // Extract body text
+        const bodyText = extractBodyText(detail.data.payload);
 
-        for (const pattern of FLIGHT_PATTERNS) {
+        // Combine all text for searching
+        const textToSearch = `${subject} ${snippet} ${bodyText}`;
+
+        // Extract booking reference first
+        let bookingRef = '';
+        for (const pattern of BOOKING_REF_PATTERNS) {
+          pattern.lastIndex = 0;
           const match = pattern.exec(textToSearch);
           if (match) {
-            flightNumber = `${match[1]}${match[2]}`.toUpperCase();
+            bookingRef = match[1].toUpperCase();
             break;
           }
-          pattern.lastIndex = 0; // Reset regex
         }
 
-        // Extract date from email
+        // Skip if we've already seen this booking
+        if (bookingRef && seenBookingRefs.has(bookingRef)) {
+          continue;
+        }
+        if (bookingRef) {
+          seenBookingRefs.add(bookingRef);
+        }
+
+        // Extract flight number
+        let flightNumber = '';
+        for (const pattern of FLIGHT_PATTERNS) {
+          pattern.lastIndex = 0;
+          const match = pattern.exec(textToSearch);
+          if (match) {
+            // Normalize: remove spaces, uppercase
+            flightNumber = `${match[1]}${match[2]}`.replace(/\s/g, '').toUpperCase();
+            // Convert EZY/EJU to U2 for consistency
+            if (flightNumber.startsWith('EZY') || flightNumber.startsWith('EJU')) {
+              flightNumber = 'U2' + flightNumber.slice(3);
+            }
+            break;
+          }
+        }
+
+        // Extract flight date
         let flightDate = '';
         for (const pattern of DATE_PATTERNS) {
+          pattern.lastIndex = 0;
           const match = pattern.exec(textToSearch);
           if (match) {
             flightDate = match[0];
             break;
           }
-          pattern.lastIndex = 0;
         }
 
-        flights.push({
-          id: msg.id!,
-          flightNumber: flightNumber || 'Unknown',
-          date: flightDate || 'Check email',
-          subject,
-          from: extractEmailDomain(from),
-          snippet: snippet.substring(0, 150) + '...',
-          receivedAt: date,
-        });
+        // Extract route
+        let route = '';
+        AIRPORT_PATTERN.lastIndex = 0;
+        let airportMatch = AIRPORT_PATTERN.exec(textToSearch);
+        if (airportMatch) {
+          route = `${airportMatch[1]} → ${airportMatch[2]}`;
+        } else {
+          CITY_ROUTE_PATTERN.lastIndex = 0;
+          const cityMatch = CITY_ROUTE_PATTERN.exec(textToSearch);
+          if (cityMatch) {
+            route = `${cityMatch[1]} → ${cityMatch[2]}`;
+          }
+        }
+
+        // Only add if we found something useful
+        if (flightNumber || bookingRef || route) {
+          flights.push({
+            id: msg.id!,
+            flightNumber: flightNumber || 'Check email',
+            date: flightDate || 'Check email',
+            route: route || 'Check email',
+            bookingRef: bookingRef || '-',
+            subject: subject.substring(0, 80),
+            from: extractEmailDomain(from),
+            snippet: snippet.substring(0, 100) + '...',
+            receivedAt: date,
+          });
+        }
       } catch (err) {
         console.error('Error fetching message:', err);
       }
@@ -141,6 +224,46 @@ export async function GET() {
       { error: error.message || 'Failed to scan Gmail' },
       { status: 500 }
     );
+  }
+}
+
+// Extract text from email body (handles multipart)
+function extractBodyText(payload: any): string {
+  if (!payload) return '';
+
+  let text = '';
+
+  // Direct body
+  if (payload.body?.data) {
+    text += decodeBase64(payload.body.data);
+  }
+
+  // Multipart
+  if (payload.parts) {
+    for (const part of payload.parts) {
+      if (part.mimeType === 'text/plain' && part.body?.data) {
+        text += decodeBase64(part.body.data);
+      } else if (part.mimeType === 'text/html' && part.body?.data) {
+        // Strip HTML tags for searching
+        const html = decodeBase64(part.body.data);
+        text += html.replace(/<[^>]*>/g, ' ');
+      } else if (part.parts) {
+        // Nested multipart
+        text += extractBodyText(part);
+      }
+    }
+  }
+
+  return text;
+}
+
+function decodeBase64(data: string): string {
+  try {
+    // Gmail uses URL-safe base64
+    const decoded = Buffer.from(data, 'base64').toString('utf-8');
+    return decoded;
+  } catch {
+    return '';
   }
 }
 

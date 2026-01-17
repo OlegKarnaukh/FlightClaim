@@ -8,6 +8,8 @@ interface FlightInfo {
   id: string;
   flightNumber: string;
   date: string;
+  route: string;
+  bookingRef: string;
   subject: string;
   from: string;
   snippet: string;
@@ -129,11 +131,16 @@ export default function Dashboard() {
                       <span style={styles.flightNumber}>{flight.flightNumber}</span>
                       <span style={styles.flightDate}>{flight.date}</span>
                     </div>
-                    <div style={styles.flightAirline}>
-                      {getAirlineName(flight.from)}
-                    </div>
-                    <div style={styles.flightSubject}>
-                      {flight.subject.substring(0, 60)}...
+                    {flight.route && flight.route !== 'Check email' && (
+                      <div style={styles.flightRoute}>
+                        🛫 {flight.route}
+                      </div>
+                    )}
+                    <div style={styles.flightInfo}>
+                      <span>{getAirlineName(flight.from)}</span>
+                      {flight.bookingRef && flight.bookingRef !== '-' && (
+                        <span style={styles.bookingRef}>Ref: {flight.bookingRef}</span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -273,13 +280,26 @@ const styles: { [key: string]: React.CSSProperties } = {
   flightDate: {
     fontSize: '0.9rem',
     opacity: 0.8,
+    background: 'rgba(255,255,255,0.1)',
+    padding: '4px 10px',
+    borderRadius: '12px',
   },
-  flightAirline: {
-    fontSize: '1rem',
-    marginBottom: '5px',
+  flightRoute: {
+    fontSize: '1.1rem',
+    marginBottom: '8px',
+    color: '#fff',
   },
-  flightSubject: {
+  flightInfo: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: '0.9rem',
+    opacity: 0.8,
+  },
+  bookingRef: {
+    background: 'rgba(255,215,0,0.2)',
+    padding: '3px 8px',
+    borderRadius: '8px',
     fontSize: '0.85rem',
-    opacity: 0.7,
   },
 };
