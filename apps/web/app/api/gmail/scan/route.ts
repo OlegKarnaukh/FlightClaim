@@ -47,18 +47,16 @@ const CITIES = 'Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam
 // Route pattern: "Milan-Barcelona" or "Milan to Barcelona" or "Milan → Barcelona"
 const CITY_ROUTE_PATTERN = new RegExp(`(${CITIES})\\s*(?:to|→|-|–)\\s*(${CITIES})`, 'gi');
 
-// Date patterns - more comprehensive
+// Date patterns - prefer formats with year
 const DATE_PATTERNS = [
-  // EasyJet format: "Thu 06 Jun" or "Sat 25 May" (day of week + date + month)
-  /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/gi,
+  // "25-05-2024" or "25/05/2024" or "25.05.2024" (preferred - has year)
+  /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g,
+  // "2024-05-25"
+  /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/g,
   // "25 May 2024" or "25 May, 2024"
   /(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[,]?\s+(\d{4})/gi,
   // "May 25, 2024"
   /(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})[,]?\s+(\d{4})/gi,
-  // "25/05/2024" or "25-05-2024" or "25.05.2024"
-  /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g,
-  // "2024-05-25"
-  /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/g,
 ];
 
 // Booking reference patterns - EasyJet uses 6-7 char codes like K7FJS1Z
@@ -185,12 +183,16 @@ export async function GET() {
           }
         }
 
-        // Extract route
+        // Extract route - try multiple patterns
         let route = '';
+
+        // Pattern 1: "from X to Y" in snippet (feedback emails)
         const snippetRouteMatch = snippet.match(/from (Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester) to (Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester)/i);
         if (snippetRouteMatch) {
           route = `${snippetRouteMatch[1]} → ${snippetRouteMatch[2]}`;
         }
+
+        // Pattern 2: City-City in full text (e.g., "Milan-Barcelona")
         if (!route) {
           CITY_ROUTE_PATTERN.lastIndex = 0;
           const cityMatch = CITY_ROUTE_PATTERN.exec(textToSearch);
@@ -198,6 +200,16 @@ export async function GET() {
             route = `${cityMatch[1]} → ${cityMatch[2]}`;
           }
         }
+
+        // Pattern 3: "from X to Y" in full text
+        if (!route) {
+          const fullTextRouteMatch = textToSearch.match(/from (Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester) to (Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester)/i);
+          if (fullTextRouteMatch) {
+            route = `${fullTextRouteMatch[1]} → ${fullTextRouteMatch[2]}`;
+          }
+        }
+
+        console.log(`Flight ${flightNumber}: route="${route}", date="${flightDate}"`);
 
         // Group by flight number
         const existing = flightData.get(flightNumber);
