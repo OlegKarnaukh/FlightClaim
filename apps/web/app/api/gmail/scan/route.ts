@@ -186,26 +186,28 @@ export async function GET() {
         // Extract route - try multiple patterns
         let route = '';
 
-        // Pattern 1: "from X to Y" in snippet (feedback emails)
-        const snippetRouteMatch = snippet.match(/from (Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester) to (Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester)/i);
-        if (snippetRouteMatch) {
-          route = `${snippetRouteMatch[1]} → ${snippetRouteMatch[2]}`;
+        // Pattern 1: "City-City, U2" format in full text (EasyJet email body header)
+        const cityDashMatch = textToSearch.match(/(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)\s*[-–]\s*(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)/i);
+        if (cityDashMatch) {
+          route = `${cityDashMatch[1]} → ${cityDashMatch[2]}`;
+          console.log(`Route matched City-City format: ${route}`);
         }
 
-        // Pattern 2: City-City in full text (e.g., "Milan-Barcelona")
+        // Pattern 2: "from X to Y" in full text
         if (!route) {
-          CITY_ROUTE_PATTERN.lastIndex = 0;
-          const cityMatch = CITY_ROUTE_PATTERN.exec(textToSearch);
-          if (cityMatch) {
-            route = `${cityMatch[1]} → ${cityMatch[2]}`;
+          const fromToMatch = textToSearch.match(/from\s+(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)\s+to\s+(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)/i);
+          if (fromToMatch) {
+            route = `${fromToMatch[1]} → ${fromToMatch[2]}`;
+            console.log(`Route matched from-to format: ${route}`);
           }
         }
 
-        // Pattern 3: "from X to Y" in full text
+        // Pattern 3: City-City in subject
         if (!route) {
-          const fullTextRouteMatch = textToSearch.match(/from (Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester) to (Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester)/i);
-          if (fullTextRouteMatch) {
-            route = `${fullTextRouteMatch[1]} → ${fullTextRouteMatch[2]}`;
+          const subjectRouteMatch = subject.match(/(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)\s*[-–]\s*(Milan|Barcelona|Lisbon|London|Paris|Rome|Madrid|Berlin|Amsterdam|Malpensa|Dublin|Manchester|Luton|Gatwick|Stansted)/i);
+          if (subjectRouteMatch) {
+            route = `${subjectRouteMatch[1]} → ${subjectRouteMatch[2]}`;
+            console.log(`Route matched from subject: ${route}`);
           }
         }
 
