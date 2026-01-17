@@ -177,7 +177,13 @@
 - [x] Создано Expo приложение (apps/mobile) с базовым UI
 - [x] Создан пакет @flightclaim/eu261 — логика расчёта компенсаций
 - [x] Создан пакет @flightclaim/ui — shared компоненты и тема
-- [ ] **NEXT:** Настроить Google OAuth и Gmail API
+- [x] **Google Cloud Console настроен:**
+  - Проект: FlightClaim-EU261
+  - Gmail API: включён
+  - OAuth Clients: iOS + Web созданы
+  - Scope: gmail.readonly добавлен
+  - Test user: добавлен
+- [ ] **NEXT:** Интегрировать NextAuth.js с Google OAuth
 
 ---
 
@@ -233,4 +239,4 @@ DATABASE_URL=
 
 ---
 
-**Последнее обновление:** 2026-01-17 (Monorepo structure created)
+**Последнее обновление:** 2026-01-17 (Google Cloud configured)
