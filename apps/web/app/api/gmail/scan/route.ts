@@ -17,14 +17,16 @@ const AIRLINE_QUERIES = [
 
 // Flight number patterns - more comprehensive
 const FLIGHT_PATTERNS = [
-  // EasyJet specific: "EZY1234" or "U2 1234" or "U21234"
-  /\b(EZY|EJU|U2)\s?(\d{3,4})\b/gi,
+  // EasyJet specific: "EZY1234" or "U2 1234" or "U21234" or "EJU1234"
+  /\b(EZY)\s?(\d{3,4})\b/gi,
+  /\b(EJU)\s?(\d{3,4})\b/gi,
+  /\b(U2)\s?(\d{3,4})\b/gi,
   // Ryanair: "FR 1234"
   /\b(FR)\s?(\d{3,4})\b/gi,
   // Lufthansa: "LH 1234"
   /\b(LH)\s?(\d{3,4})\b/gi,
   // Wizz Air: "W6 1234" or "W61234"
-  /\b(W6|W9)\s?(\d{3,4})\b/gi,
+  /\b(W6)\s?(\d{3,4})\b/gi,
   // Vueling: "VY 1234"
   /\b(VY)\s?(\d{3,4})\b/gi,
   // airBaltic: "BT 1234"
@@ -34,9 +36,7 @@ const FLIGHT_PATTERNS = [
   // Air France: "AF 1234"
   /\b(AF)\s?(\d{3,4})\b/gi,
   // Generic: "Flight EZY1234" or "flight number: U2 1234"
-  /flight\s*(?:number)?[:\s]*([A-Z]{2,3})\s?(\d{3,4})/gi,
-  // "HT3756" style (some easyJet codes)
-  /\b(HT|EC)\s?(\d{3,4})\b/gi,
+  /flight\s*(?:number)?[:\s]*(EZY|EJU|U2|FR|LH|W6|VY|BT|KL|AF)\s?(\d{3,4})/gi,
 ];
 
 // Airport codes pattern (3 letters)
@@ -55,12 +55,22 @@ const DATE_PATTERNS = [
   /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/g,
 ];
 
-// Booking reference patterns
+// Booking reference patterns - EasyJet uses 6-7 char codes like K7FJS1Z
 const BOOKING_REF_PATTERNS = [
-  /booking\s*(?:reference|ref|number|code)?[:\s]*([A-Z0-9]{5,8})/gi,
-  /confirmation[:\s]*([A-Z0-9]{5,8})/gi,
-  /PNR[:\s]*([A-Z0-9]{5,8})/gi,
-  /reference[:\s]*([A-Z0-9]{5,8})/gi,
+  // "Your booking K7FJS1Z:" or "booking K7G7F5N"
+  /(?:your\s+)?booking\s+([A-Z0-9]{6,7})[\s:,]/gi,
+  // "Booking Reference K7G7F5N"
+  /booking\s*(?:reference|ref|number|code)?[:\s]*([A-Z0-9]{6,8})/gi,
+  // "easyJet booking reference: K7G7F5N"
+  /easyjet\s+booking\s+reference[:\s]*([A-Z0-9]{6,7})/gi,
+  // "confirmation: K7FJS1Z"
+  /confirmation[:\s]*([A-Z0-9]{6,8})/gi,
+  // "PNR: ABC123"
+  /PNR[:\s]*([A-Z0-9]{6})/gi,
+  // "reference: K7FJS1Z"
+  /reference[:\s]+([A-Z0-9]{6,7})/gi,
+  // Standalone 6-7 char alphanumeric that looks like booking ref (starts with letter)
+  /\b([A-Z][A-Z0-9]{5,6})\b/g,
 ];
 
 interface FlightInfo {

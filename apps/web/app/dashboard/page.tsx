@@ -138,9 +138,7 @@ export default function Dashboard() {
                     )}
                     <div style={styles.flightInfo}>
                       <span>{getAirlineName(flight.from)}</span>
-                      {flight.bookingRef && flight.bookingRef !== '-' && (
-                        <span style={styles.bookingRef}>Ref: {flight.bookingRef}</span>
-                      )}
+                      <span style={styles.bookingRef}>Ref: {flight.bookingRef}</span>
                     </div>
                   </div>
                 ))}
