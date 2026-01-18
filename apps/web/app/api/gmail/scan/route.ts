@@ -20,9 +20,11 @@ const OTA_DOMAINS = [
 
 // Content patterns for forwarded emails
 const CONTENT_PATTERNS = [
-  '"Ryanair DAC"', '"ryanairmail.com"', '"easyJet booking"',
+  '"Ryanair DAC"', '"ryanairmail.com"', '"Ryanair Travel"',
+  '"easyJet"', '"easyjet.com"', '"EZY"', '"EJU"',
   '"Trip.com"', '"Бронирование авиабилета"', '"электронные билеты"',
   '"flight confirmation"', '"booking reference"', '"e-ticket"',
+  '"Pegasus"', '"flypgs"',
 ];
 
 // Build Gmail search query
@@ -289,35 +291,92 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
     }
   }
 
-  // 5. Match flight numbers with routes and dates (by proximity)
+  // 5. Match flight numbers with routes and dates using context window
   for (const fn of flightNumbers) {
-    // Find closest route
-    let closestRoute = routes[0];
-    let minRouteDist = Infinity;
-    for (const route of routes) {
-      const dist = Math.abs(route.pos - fn.pos);
-      if (dist < minRouteDist) {
-        minRouteDist = dist;
-        closestRoute = route;
+    // Create context window around flight number (1500 chars each direction)
+    const contextStart = Math.max(0, fn.pos - 1500);
+    const contextEnd = Math.min(text.length, fn.pos + 1500);
+    const context = text.substring(contextStart, contextEnd);
+
+    // Find route in context
+    let flightRoute: {from: string, to: string} | null = null;
+
+    // Try IATA codes in context
+    const iataMatch = context.match(/\b([A-Z]{3})\s*(?:to|→|->|-|–)\s*([A-Z]{3})\b/i);
+    if (iataMatch && AIRPORT_CODES.has(iataMatch[1].toUpperCase()) && AIRPORT_CODES.has(iataMatch[2].toUpperCase())) {
+      flightRoute = { from: iataMatch[1].toUpperCase(), to: iataMatch[2].toUpperCase() };
+    }
+
+    // Try city names in context
+    if (!flightRoute) {
+      const cityPattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–)\\s*(${CITY_NAMES})`, 'i');
+      const cityMatch = context.match(cityPattern);
+      if (cityMatch) {
+        flightRoute = { from: cityMatch[1], to: cityMatch[2] };
       }
     }
 
-    // Find closest date
-    let closestDate = dates[0];
-    let minDateDist = Infinity;
-    for (const date of dates) {
-      const dist = Math.abs(date.pos - fn.pos);
-      if (dist < minDateDist) {
-        minDateDist = dist;
-        closestDate = date;
+    // Try Ryanair format in context
+    if (!flightRoute) {
+      const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–]\\s*(${CITY_NAMES})`, 'i');
+      const ryanairMatch = context.match(ryanairPattern);
+      if (ryanairMatch) {
+        flightRoute = { from: ryanairMatch[1], to: ryanairMatch[2] };
       }
+    }
+
+    // Fallback: use closest route from full email
+    if (!flightRoute && routes.length > 0) {
+      let closestRoute = routes[0];
+      let minDist = Infinity;
+      for (const route of routes) {
+        const dist = Math.abs(route.pos - fn.pos);
+        if (dist < minDist) {
+          minDist = dist;
+          closestRoute = route;
+        }
+      }
+      flightRoute = { from: closestRoute.from, to: closestRoute.to };
+    }
+
+    // Find date in context
+    let flightDate = '';
+    for (const pattern of PATTERNS.date) {
+      const dateMatch = context.match(pattern);
+      if (dateMatch) {
+        const m0 = dateMatch[0];
+        if (/^\d{4}/.test(m0)) {
+          flightDate = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
+        } else if (/[a-zа-я]/i.test(m0)) {
+          const day = dateMatch[1].padStart(2, '0');
+          const month = MONTH_TO_NUM[dateMatch[2].toLowerCase()] || MONTH_TO_NUM[dateMatch[2].toLowerCase().substring(0, 3)] || '01';
+          flightDate = `${day}/${month}/${dateMatch[3]}`;
+        } else {
+          flightDate = m0;
+        }
+        break;
+      }
+    }
+
+    // Fallback: use closest date from full email
+    if (!flightDate && dates.length > 0) {
+      let closestDate = dates[0];
+      let minDist = Infinity;
+      for (const date of dates) {
+        const dist = Math.abs(date.pos - fn.pos);
+        if (dist < minDist) {
+          minDist = dist;
+          closestDate = date;
+        }
+      }
+      flightDate = closestDate.date;
     }
 
     // Calculate confidence
     let confidence = 30; // Base: found flight number
     if (bookingRef) confidence += 25;
-    if (closestRoute && minRouteDist < 500) confidence += 25;
-    if (closestDate && minDateDist < 500) confidence += 20;
+    if (flightRoute) confidence += 25;
+    if (flightDate) confidence += 20;
 
     // Normalize flight number (EZY/EJU -> U2)
     let flightNumber = `${fn.code}${fn.num}`;
@@ -328,9 +387,9 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
     flights.push({
       flightNumber,
       airline: fn.code.substring(0, 2),
-      from: closestRoute?.from || '',
-      to: closestRoute?.to || '',
-      departureTime: closestDate?.date || '',
+      from: flightRoute?.from || '',
+      to: flightRoute?.to || '',
+      departureTime: flightDate || '',
       bookingRef,
       confidence,
     });
