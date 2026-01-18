@@ -303,32 +303,45 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
     const contextStart = Math.max(0, fn.pos - 1500);
     const contextEnd = Math.min(text.length, fn.pos + 1500);
     const context = text.substring(contextStart, contextEnd);
+    const fnPosInContext = fn.pos - contextStart; // Position of flight number in context
 
-    // Find route in context
+    // Helper: find closest match to flight number position
+    function findClosestRouteMatch(pattern: RegExp, validator?: (m: RegExpExecArray) => boolean): {from: string, to: string} | null {
+      pattern.lastIndex = 0;
+      let m;
+      let closestMatch: {from: string, to: string, dist: number} | null = null;
+      while ((m = pattern.exec(context)) !== null) {
+        if (validator && !validator(m)) continue;
+        const dist = Math.abs(m.index - fnPosInContext);
+        if (!closestMatch || dist < closestMatch.dist) {
+          closestMatch = { from: m[1], to: m[2], dist };
+        }
+      }
+      return closestMatch ? { from: closestMatch.from, to: closestMatch.to } : null;
+    }
+
+    // Find route in context - prioritize closest match to flight number
     let flightRoute: {from: string, to: string} | null = null;
 
-    // Try IATA codes in context
-    const iataMatch = context.match(/\b([A-Z]{3})\s*(?:to|→|->|-|–)\s*([A-Z]{3})\b/i);
-    if (iataMatch && AIRPORT_CODES.has(iataMatch[1].toUpperCase()) && AIRPORT_CODES.has(iataMatch[2].toUpperCase())) {
-      flightRoute = { from: iataMatch[1].toUpperCase(), to: iataMatch[2].toUpperCase() };
+    // Try IATA codes in context (find closest)
+    const iataPattern = /\b([A-Z]{3})\s*(?:to|→|->|-|–)\s*([A-Z]{3})\b/gi;
+    flightRoute = findClosestRouteMatch(iataPattern, (m) =>
+      AIRPORT_CODES.has(m[1].toUpperCase()) && AIRPORT_CODES.has(m[2].toUpperCase())
+    );
+    if (flightRoute) {
+      flightRoute = { from: flightRoute.from.toUpperCase(), to: flightRoute.to.toUpperCase() };
     }
 
-    // Try city names in context
+    // Try city names in context (find closest)
     if (!flightRoute) {
-      const cityPattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–)\\s*(${CITY_NAMES})`, 'i');
-      const cityMatch = context.match(cityPattern);
-      if (cityMatch) {
-        flightRoute = { from: cityMatch[1], to: cityMatch[2] };
-      }
+      const cityPattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–)\\s*(${CITY_NAMES})`, 'gi');
+      flightRoute = findClosestRouteMatch(cityPattern);
     }
 
-    // Try Ryanair format in context
+    // Try Ryanair format in context (find closest)
     if (!flightRoute) {
-      const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–]\\s*(${CITY_NAMES})`, 'i');
-      const ryanairMatch = context.match(ryanairPattern);
-      if (ryanairMatch) {
-        flightRoute = { from: ryanairMatch[1], to: ryanairMatch[2] };
-      }
+      const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–]\\s*(${CITY_NAMES})`, 'gi');
+      flightRoute = findClosestRouteMatch(ryanairPattern);
     }
 
     // Fallback: use closest route from full email
@@ -345,30 +358,43 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
       flightRoute = { from: closestRoute.from, to: closestRoute.to };
     }
 
-    // Find date in context
+    // Find closest date to flight number in context
     let flightDate = '';
+    let closestDateDist = Infinity;
+
     for (const pattern of PATTERNS.date) {
-      const dateMatch = context.match(pattern);
-      if (dateMatch && dateMatch[0]) {
+      pattern.lastIndex = 0;
+      let dateMatch;
+      while ((dateMatch = pattern.exec(context)) !== null) {
+        if (!dateMatch[0]) continue;
+
+        const dist = Math.abs(dateMatch.index - fnPosInContext);
+        if (dist >= closestDateDist) continue;
+
         const m0 = dateMatch[0];
+        let parsedDate = '';
         try {
           if (/^\d{4}/.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
             // YYYY-MM-DD format
-            flightDate = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
+            parsedDate = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
           } else if (/[a-zа-я]/i.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
             // DD Month YYYY format
             const day = String(dateMatch[1]).padStart(2, '0');
             const monthStr = String(dateMatch[2]).toLowerCase();
             const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
-            flightDate = `${day}/${month}/${dateMatch[3]}`;
+            parsedDate = `${day}/${month}/${dateMatch[3]}`;
           } else if (/^\d{1,2}[\/\-\.]/.test(m0)) {
             // DD/MM/YYYY format - use as-is
-            flightDate = m0;
+            parsedDate = m0;
           }
         } catch {
           // Skip if parsing fails
         }
-        if (flightDate) break;
+
+        if (parsedDate) {
+          flightDate = parsedDate;
+          closestDateDist = dist;
+        }
       }
     }
 
