@@ -19,6 +19,7 @@ const AIRLINE_DOMAINS = [
 
 const OTA_DOMAINS = [
   'trip.com', 'booking.com', 'expedia.com', 'skyscanner.com', 'kayak.com', 'kiwi.com',
+  'yandex.ru', 'travel.yandex.ru', 'yandex.com', // Yandex Travel
 ];
 
 // Content patterns for forwarded emails
@@ -279,11 +280,18 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
 
   // 1. Find booking reference
   let bookingRef = '';
+  // Words that look like booking refs but aren't
+  const invalidBookingRefs = new Set(['NUMBER', 'TICKET', 'FLIGHT', 'BOOKING', 'RESERV', 'CONFIR', 'DETAIL', 'ONLINE', 'ITINER']);
   for (const pattern of PATTERNS.bookingRef) {
     pattern.lastIndex = 0;
     const match = pattern.exec(text);
     if (match) {
-      bookingRef = match[1].toUpperCase();
+      const candidate = match[1].toUpperCase();
+      // Skip if it's a common English word or doesn't contain at least one digit (for 6-7 char refs)
+      if (invalidBookingRefs.has(candidate) || invalidBookingRefs.has(candidate.substring(0, 6))) {
+        continue;
+      }
+      bookingRef = candidate;
       break;
     }
   }
@@ -345,9 +353,21 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
   }
 
   // Pattern 2: Simple "City - City" or "City to City"
+  // Exclude false routes that are actually airport names (e.g., "Milan Bergamo" is BGY airport)
+  const falseRoutes = new Set([
+    'milan-bergamo', 'milano-bergamo', 'milan bergamo', 'milano bergamo',
+    'london-stansted', 'london-luton', 'london-gatwick', 'london-heathrow',
+    'frankfurt-hahn', 'paris-beauvais', 'paris-orly', 'paris-charles de gaulle',
+  ]);
   if (routes.length === 0) {
     const cityRoutePattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–|—)\\s*(${CITY_NAMES})`, 'gi');
     while ((match = cityRoutePattern.exec(text)) !== null) {
+      // Skip if this is an airport name, not a route
+      const routeKey = `${match[1].toLowerCase()}-${match[2].toLowerCase()}`;
+      const routeKeySpace = `${match[1].toLowerCase()} ${match[2].toLowerCase()}`;
+      if (falseRoutes.has(routeKey) || falseRoutes.has(routeKeySpace)) {
+        continue;
+      }
       routes.push({ from: match[1], to: match[2], pos: match.index });
     }
   }
@@ -766,9 +786,33 @@ export async function GET() {
         for (const flight of parsedFlights) {
           if (flight.confidence < 30) continue;
 
-          // Use flightNumber + date as key to allow same flight on different dates (return flights)
-          const key = flight.departureTime
-            ? `${flight.flightNumber}_${flight.departureTime}`
+          // Normalize date for deduplication (convert various formats to YYYY-MM-DD)
+          let normalizedDate = '';
+          if (flight.departureTime) {
+            // Handle formats: DD/MM/YYYY, DD.MM.YYYY, DD-MM-YYYY, Mon/DD/YYYY, Mon DD, YYYY
+            const monthMap: Record<string, string> = {
+              Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+              Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+            };
+            const dateStr = flight.departureTime;
+            // Try numeric format: DD/MM/YYYY or DD.MM.YYYY
+            const numericMatch = dateStr.match(/(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})/);
+            if (numericMatch) {
+              normalizedDate = `${numericMatch[3]}-${numericMatch[2].padStart(2, '0')}-${numericMatch[1].padStart(2, '0')}`;
+            } else {
+              // Try Mon/DD/YYYY or Mon DD, YYYY format
+              const monthMatch = dateStr.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\/\s]+(\d{1,2})[,\/\s]+(\d{4})/i);
+              if (monthMatch) {
+                const month = monthMap[monthMatch[1].charAt(0).toUpperCase() + monthMatch[1].slice(1).toLowerCase()] || '01';
+                normalizedDate = `${monthMatch[3]}-${month}-${monthMatch[2].padStart(2, '0')}`;
+              } else {
+                normalizedDate = dateStr; // Fallback to original
+              }
+            }
+          }
+          // Use flightNumber + normalized date as key to allow same flight on different dates (return flights)
+          const key = normalizedDate
+            ? `${flight.flightNumber}_${normalizedDate}`
             : flight.flightNumber;
           const existing = flightMap.get(key);
 
