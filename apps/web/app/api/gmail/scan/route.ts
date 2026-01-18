@@ -645,6 +645,16 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
       }
     }
 
+    // EasyJet format: "Depart ... City ... Arrive ... City" or "City–City" in subject
+    if (!flightRoute) {
+      // Try subject format first: "Milan–Barcelona" or "Milan-Barcelona"
+      const subjectRoutePattern = new RegExp(`(${CITY_NAMES})[–\\-](${CITY_NAMES})`, 'gi');
+      const subjectMatch = subjectRoutePattern.exec(context);
+      if (subjectMatch && !isFalseRoute(subjectMatch[1], subjectMatch[2])) {
+        flightRoute = { from: normalizeCity(subjectMatch[1]), to: normalizeCity(subjectMatch[2]) };
+      }
+    }
+
     // Pegasus format "Milan-Bergamo		Istanbul Sabiha Gokcen" (tabs/spaces between locations)
     if (!flightRoute) {
       // Match: CityName(-AirportName)?  whitespace{2+}  CityName( AirportName)?
