@@ -606,11 +606,21 @@ export async function GET() {
         }
 
         // Debug: log all found flights before filtering
-        if (parsedFlights.length > 0) {
+        const isEasyJetEmail = fromHeader.toLowerCase().includes('easyjet') ||
+                               subject.toLowerCase().includes('easyjet') ||
+                               subject.toLowerCase().includes('time to fly');
+
+        if (parsedFlights.length > 0 || isEasyJetEmail) {
           console.log(`\n━━━ Email: ${subject.substring(0, 50)}... ━━━`);
-          console.log(`From: ${fromHeader.substring(0, 40)}`);
+          console.log(`From: ${fromHeader.substring(0, 50)}`);
+          console.log(`Date: ${dateHeader}`);
           console.log(`JSON-LD: ${hasJsonLD ? 'YES' : 'NO'}`);
           console.log(`Flights found: ${parsedFlights.length}`);
+          if (isEasyJetEmail && parsedFlights.length === 0) {
+            console.log(`[DEBUG] EasyJet email but no flights detected!`);
+            console.log(`[DEBUG] Snippet: ${snippet.substring(0, 200)}`);
+            console.log(`[DEBUG] Body preview: ${bodyText.substring(0, 500)}`);
+          }
           for (const f of parsedFlights) {
             const status = f.confidence >= 30 ? '✓' : '❌';
             console.log(`  ${status} ${f.flightNumber}: ${f.from}→${f.to}, ${f.departureTime}, conf=${f.confidence}, ref=${f.bookingRef || '-'}`);
