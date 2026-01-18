@@ -7,18 +7,27 @@ import { useEffect, useState } from 'react';
 interface FlightInfo {
   id: string;
   flightNumber: string;
-  date: string;
-  route: string;
-  bookingRef: string;
-  subject: string;
+  airline: string;
+  airlineCode: string;
   from: string;
-  snippet: string;
+  fromCity: string;
+  to: string;
+  toCity: string;
+  departureDate: string;
+  departureTime: string;
+  bookingRef: string;
+  passengerName: string;
+  subject: string;
+  emailFrom: string;
   receivedAt: string;
+  confidence: 'high' | 'medium' | 'low';
 }
 
 interface ScanResult {
   success: boolean;
-  totalFound: number;
+  totalEmailsFound: number;
+  emailsProcessed: number;
+  flightsFound: number;
   flights: FlightInfo[];
   error?: string;
 }
@@ -114,32 +123,48 @@ export default function Dashboard() {
               <h2 style={styles.cardTitle}>📊 Scan Results</h2>
               <div style={styles.infoRow}>
                 <span>Emails found:</span>
-                <span style={styles.highlight}>{scanResult.totalFound}</span>
+                <span style={styles.highlight}>{scanResult.totalEmailsFound}</span>
+              </div>
+              <div style={styles.infoRow}>
+                <span>Emails processed:</span>
+                <span style={styles.highlight}>{scanResult.emailsProcessed}</span>
               </div>
               <div style={styles.infoRow}>
                 <span>Flights detected:</span>
-                <span style={styles.highlight}>{scanResult.flights.length}</span>
+                <span style={styles.highlight}>{scanResult.flightsFound}</span>
               </div>
             </div>
 
             {scanResult.flights.length > 0 ? (
               <div style={styles.flightList}>
                 <h2 style={{...styles.cardTitle, marginBottom: '20px'}}>✈️ Your Flights</h2>
-                {scanResult.flights.map((flight) => (
-                  <div key={flight.id} style={styles.flightCard}>
+                {scanResult.flights.map((flight, index) => (
+                  <div key={`${flight.flightNumber}-${flight.departureDate}-${index}`} style={styles.flightCard}>
                     <div style={styles.flightHeader}>
                       <span style={styles.flightNumber}>{flight.flightNumber}</span>
-                      <span style={styles.flightDate}>{flight.date}</span>
+                      <span style={styles.flightDate}>
+                        {flight.departureDate} {flight.departureTime && `at ${flight.departureTime}`}
+                      </span>
                     </div>
-                    {flight.route && flight.route !== 'Check email' && (
-                      <div style={styles.flightRoute}>
-                        🛫 {flight.route}
+                    <div style={styles.flightRoute}>
+                      🛫 {flight.fromCity || flight.from} → {flight.toCity || flight.to}
+                    </div>
+                    <div style={styles.flightInfo}>
+                      <span>{getAirlineEmoji(flight.airlineCode)} {flight.airline}</span>
+                      <span style={{
+                        ...styles.bookingRef,
+                        background: flight.confidence === 'high'
+                          ? 'rgba(34, 197, 94, 0.3)'
+                          : 'rgba(255, 215, 0, 0.2)'
+                      }}>
+                        Ref: {flight.bookingRef}
+                      </span>
+                    </div>
+                    {flight.passengerName && (
+                      <div style={styles.passengerName}>
+                        👤 {flight.passengerName}
                       </div>
                     )}
-                    <div style={styles.flightInfo}>
-                      <span>{getAirlineName(flight.from)}</span>
-                      <span style={styles.bookingRef}>Ref: {flight.bookingRef}</span>
-                    </div>
                   </div>
                 ))}
               </div>
@@ -168,18 +193,23 @@ export default function Dashboard() {
   );
 }
 
-function getAirlineName(domain: string): string {
-  const airlines: Record<string, string> = {
-    'ryanair.com': '🟡 Ryanair',
-    'easyjet.com': '🟠 EasyJet',
-    'lufthansa.com': '🔵 Lufthansa',
-    'wizzair.com': '🟣 Wizz Air',
-    'vueling.com': '🟡 Vueling',
-    'airbaltic.com': '🟢 airBaltic',
-    'klm.com': '🔵 KLM',
-    'airfrance.com': '🔵 Air France',
+function getAirlineEmoji(airlineCode: string): string {
+  const emojis: Record<string, string> = {
+    'FR': '🟡', // Ryanair
+    'U2': '🟠', // EasyJet
+    'EJU': '🟠', // EasyJet Europe
+    'LH': '🔵', // Lufthansa
+    'W6': '🟣', // Wizz Air
+    'VY': '🟡', // Vueling
+    'BT': '🟢', // airBaltic
+    'KL': '🔵', // KLM
+    'AF': '🔵', // Air France
+    'PC': '🟣', // Pegasus
+    'TK': '🔴', // Turkish Airlines
+    'QR': '🟤', // Qatar Airways
+    'ET': '🟢', // Ethiopian Airlines
   };
-  return airlines[domain] || `✈️ ${domain}`;
+  return emojis[airlineCode] || '✈️';
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
@@ -299,5 +329,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '3px 8px',
     borderRadius: '8px',
     fontSize: '0.85rem',
+  },
+  passengerName: {
+    marginTop: '8px',
+    fontSize: '0.85rem',
+    opacity: 0.7,
   },
 };
