@@ -200,6 +200,7 @@ const PATTERNS = {
   bookingRef: [
     /(?:booking|confirmation|reservation|pnr|reference|locator|бронирован|номер\s*заказа|код\s*бронирования|booking\s*code)[:\s#]+([A-Z0-9]{6,7})\b/gi,
     /(?:Confirmation\s+Code)[:\s]*([A-Z0-9]{5,7})\b/gi, // Expedia format: "Confirmation Code: UA5K7M"
+    /(?:PIN-код|PIN)[:\s]*(\d{4,6})\b/gi, // Yandex format: "PIN-код: 5200"
     /\b([A-Z][0-9][A-Z0-9]{4,5})\b/g, // Must have at least one digit (avoids "RYANAIR")
     /Reservation[:\s]+([A-Z0-9]{6})/gi,  // Ryanair
   ],
