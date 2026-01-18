@@ -199,11 +199,14 @@ const CITY_NAMES = [
 
 // Normalize airport names to city names
 function normalizeCity(name: string): string {
-  const normalized = name.trim();
+  const normalized = name.trim().replace(/\s+/g, ' ');
   const lower = normalized.toLowerCase();
-  if (lower === 'milan-bergamo' || lower === 'milan bergamo' || lower === 'bergamo') return 'Milan';
-  if (lower.includes('istanbul') || lower === 'sabiha gokcen') return 'Istanbul';
-  if (lower === 'st.petersburg' || lower === 'st. petersburg') return 'St. Petersburg';
+  // Exclude non-city words
+  if (['pc', 'no', 'flight', 'from', 'to', 'the', 'and', 'or'].includes(lower)) return '';
+  // Normalize airport names to cities
+  if (lower.startsWith('milan-bergamo') || lower.startsWith('milan bergamo') || lower === 'bergamo') return 'Milan';
+  if (lower.includes('istanbul') || lower.includes('sabiha')) return 'Istanbul';
+  if (lower.startsWith('st.petersburg') || lower.startsWith('st. petersburg')) return 'St. Petersburg';
   if (lower === 'stansted' || lower === 'gatwick' || lower === 'luton' || lower === 'heathrow') return 'London';
   if (lower === 'malpensa' || lower === 'fiumicino') return 'Rome';
   return normalized;
@@ -659,12 +662,14 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
     if (!flightRoute) {
       // Match: CityName(-AirportName)?  whitespace{2+}  CityName( AirportName)?
       const pegasusRoutePattern = /([A-Za-z][A-Za-z.\-]+(?:\s+[A-Za-z]+)*)\s{2,}([A-Za-z][A-Za-z.\-]+(?:\s+[A-Za-z]+)*)/gi;
-      const pegasusMatch = pegasusRoutePattern.exec(context);
-      if (pegasusMatch) {
+      let pegasusMatch;
+      while ((pegasusMatch = pegasusRoutePattern.exec(context)) !== null) {
         const from = normalizeCity(pegasusMatch[1]);
         const to = normalizeCity(pegasusMatch[2]);
-        if (from !== to && !isFalseRoute(from, to)) {
+        // Skip if either city is empty (filtered out) or same
+        if (from && to && from !== to && !isFalseRoute(from, to)) {
           flightRoute = { from, to };
+          break;
         }
       }
     }
