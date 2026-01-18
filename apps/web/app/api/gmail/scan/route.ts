@@ -466,6 +466,7 @@ export async function GET() {
 
         // LEVEL 2: Try JSON-LD first
         let parsedFlights = parseJsonLD(bodyHtml);
+        const hasJsonLD = parsedFlights.length > 0;
 
         // LEVEL 3: Regex fallback
         if (parsedFlights.length === 0) {
@@ -473,9 +474,21 @@ export async function GET() {
           parsedFlights = parseWithRegex(textToSearch, dateHeader);
         }
 
-        // Store flights with confidence >= 40
+        // Debug: log all found flights before filtering
+        if (parsedFlights.length > 0) {
+          console.log(`\n━━━ Email: ${subject.substring(0, 50)}... ━━━`);
+          console.log(`From: ${fromHeader.substring(0, 40)}`);
+          console.log(`JSON-LD: ${hasJsonLD ? 'YES' : 'NO'}`);
+          console.log(`Flights found: ${parsedFlights.length}`);
+          for (const f of parsedFlights) {
+            const status = f.confidence >= 30 ? '✓' : '❌';
+            console.log(`  ${status} ${f.flightNumber}: ${f.from}→${f.to}, ${f.departureTime}, conf=${f.confidence}, ref=${f.bookingRef || '-'}`);
+          }
+        }
+
+        // Store flights with confidence >= 30 (lowered for debugging)
         for (const flight of parsedFlights) {
-          if (flight.confidence < 40) continue;
+          if (flight.confidence < 30) continue;
 
           const key = flight.flightNumber;
           const existing = flightMap.get(key);
