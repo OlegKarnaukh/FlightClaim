@@ -111,6 +111,8 @@ const AIRLINE_CODES = new Set([
   'EI', 'AZ', 'SN', 'LG', 'EW', 'EN', 'HV', 'TO', 'BJ', 'XQ', 'TOM', 'EZY', 'EJU',
   // Additional airlines
   'UA', 'I2', 'FZ', 'FY', // United, Iberia Express, flydubai, Kiwi
+  // Airlines for tests 21-30
+  'NH', 'DL', 'CA', 'WN', 'DY', 'KE', 'B6', 'A3', // ANA, Delta, Air China, Southwest, Norwegian, Korean Air, JetBlue, Aegean
 ]);
 
 // Valid airport IATA codes (subset of major European + common destinations)
@@ -147,6 +149,7 @@ const AIRPORT_CODES = new Set([
   'RAK', 'CMN', 'AGA', 'TUN', 'CAI', 'HRG', 'SSH',
   // North America (for long-haul from EU)
   'SFO', 'LAX', 'ORD', 'EWR', 'JFK', 'IAD', 'BOS', 'MIA', 'YYZ', 'YVR',
+  'ATL', 'LAS', 'PHX', 'FLL', // Atlanta, Las Vegas, Phoenix, Fort Lauderdale
 ]);
 
 // Airport to city name mapping (for display)
@@ -220,6 +223,12 @@ const PATTERNS = {
     /(\d{1,2})\s+(?:de\s+)?(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(?:\s+de)?\s+(\d{4})/gi,
     // Polish: "18 grudnia 2026"
     /(\d{1,2})\s+(stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia)\s+(\d{4})/gi,
+    // Japanese: "2027年3月5日"
+    /(\d{4})年(\d{1,2})月(\d{1,2})日/g,
+    // Korean: "2027년 9월 25일"
+    /(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/g,
+    // Greek: "15 Ιουλίου 2027"
+    /(\d{1,2})\s+(Ιανουαρίου|Φεβρουαρίου|Μαρτίου|Απριλίου|Μαΐου|Ιουνίου|Ιουλίου|Αυγούστου|Σεπτεμβρίου|Οκτωβρίου|Νοεμβρίου|Δεκεμβρίου)\s+(\d{4})/gi,
   ],
   // Passenger name patterns
   passengerName: [
@@ -251,6 +260,9 @@ const MONTH_TO_NUM: Record<string, string> = {
   // Polish
   'stycznia': '01', 'lutego': '02', 'marca': '03', 'kwietnia': '04', 'maja': '05', 'czerwca': '06',
   'lipca': '07', 'sierpnia': '08', 'września': '09', 'października': '10', 'listopada': '11', 'grudnia': '12',
+  // Greek
+  'ιανουαρίου': '01', 'φεβρουαρίου': '02', 'μαρτίου': '03', 'απριλίου': '04', 'μαΐου': '05', 'ιουνίου': '06',
+  'ιουλίου': '07', 'αυγούστου': '08', 'σεπτεμβρίου': '09', 'οκτωβρίου': '10', 'νοεμβρίου': '11', 'δεκεμβρίου': '12',
 };
 
 function parseWithRegex(text: string, emailDate: string, emailFrom: string = ''): FlightData[] {
@@ -365,12 +377,18 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
 
       try {
         // Parse different formats
-        if (/^\d{4}/.test(m0) && match[1] && match[2] && match[3]) {
+        // Japanese/Korean: 2027年3月5日 or 2027년 9월 25일
+        if (/年|년/.test(m0) && match[1] && match[2] && match[3]) {
+          const year = match[1];
+          const month = String(match[2]).padStart(2, '0');
+          const day = String(match[3]).padStart(2, '0');
+          dateStr = `${day}/${month}/${year}`;
+        } else if (/^\d{4}/.test(m0) && match[1] && match[2] && match[3]) {
           // YYYY-MM-DD
           dateStr = `${match[3]}/${match[2]}/${match[1]}`;
-        } else if (/[a-zа-яę]/i.test(m0) && match[1] && match[2]) {
+        } else if (/[a-zа-яęΑ-Ωα-ω]/i.test(m0) && match[1] && match[2]) {
           // Month name format - detect if month comes first (US format: "September 10, 2026")
-          const isMonthFirst = /^[a-zа-яę]/i.test(m0.trim());
+          const isMonthFirst = /^[a-zа-яęΑ-Ωα-ω]/i.test(m0.trim());
           let day: string, monthStr: string, year: string;
 
           if (isMonthFirst) {
@@ -431,12 +449,19 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
         let parsedDate = '';
         let dayMonth = '';
         try {
-          if (/^\d{4}/.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
+          // Japanese/Korean: 2027年3月5日 or 2027년 9월 25일
+          if (/年|년/.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
+            const year = dateMatch[1];
+            const month = String(dateMatch[2]).padStart(2, '0');
+            const day = String(dateMatch[3]).padStart(2, '0');
+            parsedDate = `${day}/${month}/${year}`;
+            dayMonth = `${day}/${month}`;
+          } else if (/^\d{4}/.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
             parsedDate = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
             dayMonth = `${String(dateMatch[3]).padStart(2, '0')}/${dateMatch[2]}`;
-          } else if (/[a-zа-яę]/i.test(m0) && dateMatch[1] && dateMatch[2]) {
+          } else if (/[a-zа-яęΑ-Ωα-ω]/i.test(m0) && dateMatch[1] && dateMatch[2]) {
             // Month name format - detect if month comes first (US format)
-            const isMonthFirst = /^[a-zа-яę]/i.test(m0.trim());
+            const isMonthFirst = /^[a-zа-яęΑ-Ωα-ω]/i.test(m0.trim());
             let day: string, monthStr: string, year: string;
 
             if (isMonthFirst) {

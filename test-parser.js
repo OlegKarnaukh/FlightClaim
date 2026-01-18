@@ -20,6 +20,8 @@ const AIRLINE_CODES = new Set([
   'PC', 'PG', 'SU', 'S7', 'TG', 'EZY', 'EJU',
   // New airlines for tests 11-20
   'UA', 'AZ', 'I2', 'LO', 'FZ', 'FY', // United, ITA, Iberia Express, LOT, flydubai, Kiwi
+  // New airlines for tests 21-30
+  'NH', 'DL', 'CA', 'WN', 'DY', 'KE', 'B6', 'A3', // ANA, Delta, Air China, Southwest, Norwegian, Korean Air, JetBlue, Aegean
 ]);
 
 const AIRPORT_CODES = new Set([
@@ -33,6 +35,8 @@ const AIRPORT_CODES = new Set([
   'ADB', 'ESB', 'DLM', 'BJV', 'TZX', 'GZT',
   // New airports for tests 11-20
   'SFO', 'LIN', 'ORD', 'LAX', 'EWR', // San Francisco, Milan Linate, Chicago O'Hare
+  // New airports for tests 21-30
+  'ATL', 'LAS', 'PHX', 'FLL', // Atlanta, Las Vegas, Phoenix, Fort Lauderdale
 ]);
 
 const CITY_NAMES = 'London|Paris|Berlin|Rome|Milan|Madrid|Barcelona|Amsterdam|Frankfurt|Munich|Vienna|Prague|Budapest|Warsaw|Dublin|Brussels|Lisbon|Athens|Stockholm|Copenhagen|Istanbul|Moscow|Bangkok|Phuket|Singapore|Dubai|Gatwick|Stansted|Милан|Стамбул|Бангкок';
@@ -60,6 +64,12 @@ const PATTERNS = {
     /(\d{1,2})\s+(?:de\s+)?(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(?:\s+de)?\s+(\d{4})/gi,
     // Polish: "18 grudnia 2026"
     /(\d{1,2})\s+(stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia)\s+(\d{4})/gi,
+    // Japanese: "2027年3月5日" or "5 March 2027"
+    /(\d{4})年(\d{1,2})月(\d{1,2})日/g,
+    // Korean: "2027년 9월 25일"
+    /(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/g,
+    // Greek: "15 Ιουλίου 2027"
+    /(\d{1,2})\s+(Ιανουαρίου|Φεβρουαρίου|Μαρτίου|Απριλίου|Μαΐου|Ιουνίου|Ιουλίου|Αυγούστου|Σεπτεμβρίου|Οκτωβρίου|Νοεμβρίου|Δεκεμβρίου)\s+(\d{4})/gi,
   ],
   passengerName: [
     /(?:Dear|Уважаемый)\s+(?:Mr\.?|Ms\.?)?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/gi,
@@ -88,6 +98,9 @@ const MONTH_TO_NUM = {
   // Polish
   'stycznia': '01', 'lutego': '02', 'marca': '03', 'kwietnia': '04', 'maja': '05', 'czerwca': '06',
   'lipca': '07', 'sierpnia': '08', 'września': '09', 'października': '10', 'listopada': '11', 'grudnia': '12',
+  // Greek
+  'ιανουαρίου': '01', 'φεβρουαρίου': '02', 'μαρτίου': '03', 'απριλίου': '04', 'μαΐου': '05', 'ιουνίου': '06',
+  'ιουλίου': '07', 'αυγούστου': '08', 'σεπτεμβρίου': '09', 'οκτωβρίου': '10', 'νοεμβρίου': '11', 'δεκεμβρίου': '12',
 };
 
 function parseJsonLD(html) {
@@ -257,9 +270,15 @@ function parseWithRegex(text, emailFrom) {
     while ((match = pattern.exec(text)) !== null) {
       let dateStr = '';
       const m0 = match[0];
-      if (/[a-zа-яę]/i.test(m0)) {
+      // Japanese/Korean: 2027年3月5日 or 2027년 9월 25일
+      if (/年|년/.test(m0)) {
+        const year = match[1];
+        const month = String(match[2]).padStart(2, '0');
+        const day = String(match[3]).padStart(2, '0');
+        dateStr = day + '/' + month + '/' + year;
+      } else if (/[a-zа-яęΑ-Ωα-ω]/i.test(m0)) {
         // Check if month comes first (US format: "September 10, 2026")
-        const isMonthFirst = /^[a-zа-яę]/i.test(m0.trim());
+        const isMonthFirst = /^[a-zа-яęΑ-Ωα-ω]/i.test(m0.trim());
         let day, monthStr, year;
         if (isMonthFirst) {
           monthStr = String(match[1]).toLowerCase();
