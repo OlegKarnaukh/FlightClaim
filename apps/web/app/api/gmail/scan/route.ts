@@ -713,7 +713,7 @@ export async function GET() {
     // Process emails
     const flightMap = new Map<string, FlightInfo>();
 
-    for (const msg of messages.slice(0, 50)) {
+    for (const msg of messages.slice(0, 100)) {
       try {
         const detail = await gmail.users.messages.get({
           userId: 'me',
