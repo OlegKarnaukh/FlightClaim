@@ -56,6 +56,15 @@ interface FlightData {
   bookingRef: string;
   passengerName?: string;
   confidence: number;
+  confidenceDetails?: {
+    flightNumber: number;
+    bookingRef: number;
+    departureAirport: number;
+    arrivalAirport: number;
+    date: number;
+    passengerName: number;
+    knownDomain: number;
+  };
 }
 
 function parseJsonLD(html: string): FlightData[] {
@@ -200,6 +209,12 @@ const PATTERNS = {
     /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/gi, // Sun 09 Jun (no year - will infer)
     /(\d{1,2})\s+(янв|фев|мар|апр|мая|май|июн|июл|авг|сен|окт|ноя|дек)[а-я]*\.?\s+(\d{4})/gi, // Russian: 17 нояб. 2024 or 17 ноября 2024
   ],
+  // Passenger name patterns
+  passengerName: [
+    /(?:passenger|pasajero|пассажир|passager|nome|name)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/gi,
+    /([A-Z]{2,}\/[A-Z]{2,}(?:\s+(?:MR|MS|MRS|MISS))?)/g, // LASTNAME/FIRSTNAME MR
+    /(?:Dear|Уважаемый|Уважаемая)\s+(?:Mr\.?|Ms\.?|Mrs\.?|Miss)?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/gi,
+  ],
 };
 
 const MONTH_TO_NUM: Record<string, string> = {
@@ -214,7 +229,7 @@ const MONTH_TO_NUM: Record<string, string> = {
   'нояб': '11', 'сент': '09', // longer abbreviations
 };
 
-function parseWithRegex(text: string, emailDate: string): FlightData[] {
+function parseWithRegex(text: string, emailDate: string, emailFrom: string = ''): FlightData[] {
   const flights: FlightData[] = [];
 
   // Helper: extract year from email date header for dates without year
@@ -503,11 +518,33 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
       flightDate = closestDate.date;
     }
 
-    // Calculate confidence
-    let confidence = 30; // Base: found flight number
-    if (bookingRef) confidence += 25;
-    if (flightRoute) confidence += 25;
-    if (flightDate) confidence += 20;
+    // Extract passenger name from context
+    let passengerName = '';
+    for (const pattern of PATTERNS.passengerName) {
+      pattern.lastIndex = 0;
+      const nameMatch = pattern.exec(context);
+      if (nameMatch && nameMatch[1]) {
+        const name = nameMatch[1].trim();
+        // Filter out invalid names (too short, contains numbers)
+        if (name.length > 3 && !/\d/.test(name)) {
+          passengerName = name;
+          break;
+        }
+      }
+    }
+
+    // Calculate detailed confidence score (Genspark-style)
+    const confidenceDetails = {
+      flightNumber: 15, // Base: found valid flight number
+      bookingRef: bookingRef ? 20 : 0,
+      departureAirport: (flightRoute?.from && AIRPORT_CODES.has(flightRoute.from.toUpperCase())) ? 10 : (flightRoute?.from ? 5 : 0),
+      arrivalAirport: (flightRoute?.to && AIRPORT_CODES.has(flightRoute.to.toUpperCase())) ? 10 : (flightRoute?.to ? 5 : 0),
+      date: flightDate ? 15 : 0,
+      passengerName: passengerName ? 5 : 0,
+      knownDomain: AIRLINE_DOMAINS.some(d => emailFrom.toLowerCase().includes(d)) ? 10 : 0,
+    };
+
+    const confidence = Object.values(confidenceDetails).reduce((a, b) => a + b, 0);
 
     // Normalize flight number (EZY/EJU -> U2)
     let flightNumber = `${fn.code}${fn.num}`;
@@ -522,7 +559,9 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
       to: flightRoute?.to || '',
       departureTime: flightDate || '',
       bookingRef,
+      passengerName: passengerName || undefined,
       confidence,
+      confidenceDetails,
     });
   }
 
@@ -602,7 +641,7 @@ export async function GET() {
         // LEVEL 3: Regex fallback
         if (parsedFlights.length === 0) {
           const textToSearch = `${subject} ${snippet} ${bodyText}`;
-          parsedFlights = parseWithRegex(textToSearch, dateHeader);
+          parsedFlights = parseWithRegex(textToSearch, dateHeader, fromHeader);
         }
 
         // Debug: log all found flights before filtering
