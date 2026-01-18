@@ -9,7 +9,7 @@ import { authOptions } from '@/lib/auth';
 
 const AIRLINE_DOMAINS = [
   'ryanair.com', 'ryanairmail.com', 'rfrmail.com', // Ryanair uses multiple domains
-  'easyjet.com', 'mail.easyjet.com',
+  'easyjet.com', 'mail.easyjet.com', 'info.easyjet.com', // EasyJet sends from info.easyjet.com
   'lufthansa.com', 'wizzair.com', 'vueling.com',
   'airbaltic.com', 'klm.com', 'airfrance.com', 'britishairways.com', 'iberia.com',
   'turkishairlines.com', 'emirates.com', 'qatarairways.com', 'flypgs.com',
@@ -259,28 +259,45 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
     }
   }
 
-  // 3b. Try city names if no IATA routes found
+  // 3b. Try city names - find ALL routes (not just if no IATA)
+  // Map to store routes by date for Trip.com style matching
+  const routesByDate: Map<string, {from: string, to: string}> = new Map();
+
+  // Pattern 1: Trip.com format "City - City • date" - extract with date association
+  const tripComPattern = new RegExp(`(${CITY_NAMES})\\s*[-–—]\\s*(${CITY_NAMES})\\s*[•·]\\s*(\\d{1,2})\\s*(янв|фев|мар|апр|мая|июн|июл|авг|сен|окт|ноя|дек)[а-я]*`, 'gi');
+  while ((match = tripComPattern.exec(text)) !== null) {
+    routes.push({ from: match[1], to: match[2], pos: match.index });
+    // Store route by date (e.g., "17/11" for "17 нояб")
+    const day = String(match[3]).padStart(2, '0');
+    const monthStr = match[4].toLowerCase();
+    const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '';
+    if (month) {
+      const dateKey = `${day}/${month}`;
+      routesByDate.set(dateKey, { from: match[1], to: match[2] });
+    }
+  }
+
+  // Pattern 2: Simple "City - City" or "City to City"
   if (routes.length === 0) {
-    // Pattern 1: Simple "City - City" or "City to City"
     const cityRoutePattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–|—)\\s*(${CITY_NAMES})`, 'gi');
     while ((match = cityRoutePattern.exec(text)) !== null) {
       routes.push({ from: match[1], to: match[2], pos: match.index });
     }
+  }
 
-    // Pattern 2: Russian "из Города в Город"
-    if (routes.length === 0) {
-      const russianFromTo = new RegExp(`из\\s+(${CITY_NAMES})\\s+в\\s+(${CITY_NAMES})`, 'gi');
-      while ((match = russianFromTo.exec(text)) !== null) {
-        routes.push({ from: match[1], to: match[2], pos: match.index });
-      }
+  // Pattern 3: Russian "из Города в Город"
+  if (routes.length === 0) {
+    const russianFromTo = new RegExp(`из\\s+(${CITY_NAMES})\\s+в\\s+(${CITY_NAMES})`, 'gi');
+    while ((match = russianFromTo.exec(text)) !== null) {
+      routes.push({ from: match[1], to: match[2], pos: match.index });
     }
+  }
 
-    // Pattern 3: "City (Airport) - City (Airport)" (Ryanair style)
-    if (routes.length === 0) {
-      const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–—]\\s*(${CITY_NAMES})`, 'gi');
-      while ((match = ryanairPattern.exec(text)) !== null) {
-        routes.push({ from: match[1], to: match[2], pos: match.index });
-      }
+  // Pattern 4: "City (Airport) - City (Airport)" (Ryanair style)
+  if (routes.length === 0) {
+    const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–—]\\s*(${CITY_NAMES})`, 'gi');
+    while ((match = ryanairPattern.exec(text)) !== null) {
+      routes.push({ from: match[1], to: match[2], pos: match.index });
     }
   }
 
@@ -330,6 +347,54 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
     const context = text.substring(contextStart, contextEnd);
     const fnPosInContext = fn.pos - contextStart; // Position of flight number in context
 
+    // FIRST: Find closest date to flight number in context
+    let flightDate = '';
+    let closestDateDist = Infinity;
+    let flightDateKey = ''; // For Trip.com route matching by date
+
+    for (const pattern of PATTERNS.date) {
+      pattern.lastIndex = 0;
+      let dateMatch;
+      while ((dateMatch = pattern.exec(context)) !== null) {
+        if (!dateMatch[0]) continue;
+
+        const dist = Math.abs(dateMatch.index - fnPosInContext);
+        if (dist >= closestDateDist) continue;
+
+        const m0 = dateMatch[0];
+        let parsedDate = '';
+        let dayMonth = '';
+        try {
+          if (/^\d{4}/.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
+            parsedDate = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
+            dayMonth = `${String(dateMatch[3]).padStart(2, '0')}/${dateMatch[2]}`;
+          } else if (/[a-zа-я]/i.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
+            const day = String(dateMatch[1]).padStart(2, '0');
+            const monthStr = String(dateMatch[2]).toLowerCase();
+            const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
+            let year = String(dateMatch[3]);
+            if (year.length === 2) year = '20' + year;
+            parsedDate = `${day}/${month}/${year}`;
+            dayMonth = `${day}/${month}`;
+          } else if (/^\d{1,2}[\/\-\.]/.test(m0)) {
+            parsedDate = m0;
+            const parts = m0.split(/[\/\-\.]/);
+            if (parts.length >= 2) {
+              dayMonth = `${String(parts[0]).padStart(2, '0')}/${String(parts[1]).padStart(2, '0')}`;
+            }
+          }
+        } catch {
+          // Skip if parsing fails
+        }
+
+        if (parsedDate) {
+          flightDate = parsedDate;
+          flightDateKey = dayMonth;
+          closestDateDist = dist;
+        }
+      }
+    }
+
     // Helper: find closest match to flight number position
     function findClosestRouteMatch(pattern: RegExp, validator?: (m: RegExpExecArray) => boolean): {from: string, to: string} | null {
       pattern.lastIndex = 0;
@@ -345,32 +410,38 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
       return closestMatch ? { from: closestMatch.from, to: closestMatch.to } : null;
     }
 
-    // Find route in context - prioritize closest match to flight number
+    // SECOND: Find route - FIRST try matching by date (for Trip.com), then by position
     let flightRoute: {from: string, to: string} | null = null;
 
+    // Trip.com: Match route by date if available
+    if (flightDateKey && routesByDate.has(flightDateKey)) {
+      flightRoute = routesByDate.get(flightDateKey)!;
+    }
+
     // Try IATA codes in context (find closest)
-    const iataPattern = /\b([A-Z]{3})\s*(?:to|→|->|-|–|—)\s*([A-Z]{3})\b/gi;
-    flightRoute = findClosestRouteMatch(iataPattern, (m) =>
-      AIRPORT_CODES.has(m[1].toUpperCase()) && AIRPORT_CODES.has(m[2].toUpperCase())
-    );
-    if (flightRoute) {
-      flightRoute = { from: flightRoute.from.toUpperCase(), to: flightRoute.to.toUpperCase() };
+    if (!flightRoute) {
+      const iataPattern = /\b([A-Z]{3})\s*(?:to|→|->|-|–|—)\s*([A-Z]{3})\b/gi;
+      flightRoute = findClosestRouteMatch(iataPattern, (m) =>
+        AIRPORT_CODES.has(m[1].toUpperCase()) && AIRPORT_CODES.has(m[2].toUpperCase())
+      );
+      if (flightRoute) {
+        flightRoute = { from: flightRoute.from.toUpperCase(), to: flightRoute.to.toUpperCase() };
+      }
     }
 
     // Try city names in context (find closest) - multiple patterns
     if (!flightRoute) {
-      // Pattern 1: "City - City" or "City to City" or "City → City"
       const cityPattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–|—)\\s*(${CITY_NAMES})`, 'gi');
       flightRoute = findClosestRouteMatch(cityPattern);
     }
 
-    // Pattern 2: Russian "из Города в Город" format
+    // Russian "из Города в Город" format
     if (!flightRoute) {
       const russianFromTo = new RegExp(`из\\s+(${CITY_NAMES})\\s+в\\s+(${CITY_NAMES})`, 'gi');
       flightRoute = findClosestRouteMatch(russianFromTo);
     }
 
-    // Pattern 3: Ryanair format "City (Airport) - City (Airport)"
+    // Ryanair format "City (Airport) - City (Airport)"
     if (!flightRoute) {
       const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–—]\\s*(${CITY_NAMES})`, 'gi');
       flightRoute = findClosestRouteMatch(ryanairPattern);
@@ -390,52 +461,7 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
       flightRoute = { from: closestRoute.from, to: closestRoute.to };
     }
 
-    // Find closest date to flight number in context
-    let flightDate = '';
-    let closestDateDist = Infinity;
-
-    for (const pattern of PATTERNS.date) {
-      pattern.lastIndex = 0;
-      let dateMatch;
-      while ((dateMatch = pattern.exec(context)) !== null) {
-        if (!dateMatch[0]) continue;
-
-        const dist = Math.abs(dateMatch.index - fnPosInContext);
-        if (dist >= closestDateDist) continue;
-
-        const m0 = dateMatch[0];
-        let parsedDate = '';
-        try {
-          if (/^\d{4}/.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
-            // YYYY-MM-DD format
-            parsedDate = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
-          } else if (/[a-zа-я]/i.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
-            // DD Month YY or DD Month YYYY format (e.g., "Wed, 04 Sep 24" or "25 March 2024")
-            const day = String(dateMatch[1]).padStart(2, '0');
-            const monthStr = String(dateMatch[2]).toLowerCase();
-            const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
-            // Handle 2-digit year: 24 -> 2024
-            let year = String(dateMatch[3]);
-            if (year.length === 2) {
-              year = '20' + year;
-            }
-            parsedDate = `${day}/${month}/${year}`;
-          } else if (/^\d{1,2}[\/\-\.]/.test(m0)) {
-            // DD/MM/YYYY format - use as-is
-            parsedDate = m0;
-          }
-        } catch {
-          // Skip if parsing fails
-        }
-
-        if (parsedDate) {
-          flightDate = parsedDate;
-          closestDateDist = dist;
-        }
-      }
-    }
-
-    // Fallback: use closest date from full email
+    // Fallback: use closest date from full email if not found in context
     if (!flightDate && dates.length > 0) {
       let closestDate = dates[0];
       let minDist = Infinity;
