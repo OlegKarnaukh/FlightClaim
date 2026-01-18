@@ -192,6 +192,8 @@ const PATTERNS = {
     /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g,                    // 25/03/2024
     /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/g,                    // 2024-03-25
     /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})/gi, // 25 March 2024
+    /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[,\s]+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2})\b/gi, // Wed, 04 Sep 24
+    /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2})\b/gi, // 04 Sep 24
     /(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)[.\s]+(\d{4})/gi, // Russian
   ],
 };
@@ -294,11 +296,15 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
           // YYYY-MM-DD
           dateStr = `${match[3]}/${match[2]}/${match[1]}`;
         } else if (/[a-zа-я]/i.test(m0) && match[1] && match[2] && match[3]) {
-          // Month name format
+          // Month name format (e.g., "Wed, 04 Sep 24" or "25 March 2024")
           const day = String(match[1]).padStart(2, '0');
           const monthStr = String(match[2]).toLowerCase();
           const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
-          const year = match[3];
+          // Handle 2-digit year: 24 -> 2024
+          let year = String(match[3]);
+          if (year.length === 2) {
+            year = '20' + year;
+          }
           dateStr = `${day}/${month}/${year}`;
         } else if (m0) {
           // DD/MM/YYYY - use as-is
@@ -402,11 +408,16 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
             // YYYY-MM-DD format
             parsedDate = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
           } else if (/[a-zа-я]/i.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
-            // DD Month YYYY format
+            // DD Month YY or DD Month YYYY format (e.g., "Wed, 04 Sep 24" or "25 March 2024")
             const day = String(dateMatch[1]).padStart(2, '0');
             const monthStr = String(dateMatch[2]).toLowerCase();
             const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
-            parsedDate = `${day}/${month}/${dateMatch[3]}`;
+            // Handle 2-digit year: 24 -> 2024
+            let year = String(dateMatch[3]);
+            if (year.length === 2) {
+              year = '20' + year;
+            }
+            parsedDate = `${day}/${month}/${year}`;
           } else if (/^\d{1,2}[\/\-\.]/.test(m0)) {
             // DD/MM/YYYY format - use as-is
             parsedDate = m0;
