@@ -184,7 +184,8 @@ const PATTERNS = {
   bookingRef: [
     /(?:booking|confirmation|reservation|pnr|reference|locator|бронирован|номер\s*заказа)[:\s#]+([A-Z0-9]{6})\b/gi,
     /\b([A-Z][A-Z0-9]{5})\b(?=\s*(?:\||booking|confirmation))/gi,
-    /Reservation[:\s]+([A-Z0-9]{6})/gi,  // Ryanair
+    /Reservation\s+Number[:\s]+([A-Z0-9]{6})\b/gi,  // Pegasus: "Reservation Number: 1633UY"
+    /Reservation[:\s]+([A-Z0-9]{5,6})\b(?!\s*Number)/gi,  // Ryanair - but not if followed by "Number"
   ],
   // Flight number: 2-3 letter airline code + 1-4 digit number
   flightNumber: /\b(EZY|EJU|[A-Z]{2})\s?(\d{1,4})\b/g,
