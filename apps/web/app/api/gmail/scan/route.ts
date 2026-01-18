@@ -12,8 +12,9 @@ const AIRLINE_DOMAINS = [
   'easyjet.com', 'mail.easyjet.com', 'info.easyjet.com', // EasyJet sends from info.easyjet.com
   'lufthansa.com', 'wizzair.com', 'vueling.com',
   'airbaltic.com', 'klm.com', 'airfrance.com', 'britishairways.com', 'iberia.com',
-  'turkishairlines.com', 'emirates.com', 'qatarairways.com', 'flypgs.com',
-  'pegasus.com', 'bangkokair.com', 'aeroflot.ru', 's7.ru', 'norwegian.com',
+  'turkishairlines.com', 'emirates.com', 'qatarairways.com',
+  'flypgs.com', 'mailing.flypgs.com', 'noreply.flypgs.com', // Pegasus Airlines
+  'bangkokair.com', 'aeroflot.ru', 's7.ru', 'norwegian.com',
 ];
 
 const OTA_DOMAINS = [
@@ -23,10 +24,10 @@ const OTA_DOMAINS = [
 // Content patterns for forwarded emails
 const CONTENT_PATTERNS = [
   '"Ryanair DAC"', '"ryanairmail.com"', '"Ryanair Travel"',
-  '"easyJet"', '"easyjet.com"', '"EZY"', '"EJU"',
+  '"easyJet"', '"easyjet.com"', '"EZY"', '"EJU"', '"time to fly"',
   '"Trip.com"', '"Бронирование авиабилета"', '"электронные билеты"',
-  '"flight confirmation"', '"booking reference"', '"e-ticket"',
-  '"Pegasus"', '"flypgs"',
+  '"flight confirmation"', '"booking reference"', '"e-ticket"', '"online ticket"',
+  '"Pegasus"', '"flypgs"', '"Pegasus Airlines"', '"Online Ticket Reservation"',
 ];
 
 // Build Gmail search query
