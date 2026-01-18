@@ -195,6 +195,19 @@ const CITY_NAMES = [
   'Стамбул', 'Москва', 'Санкт-Петербург', 'Бангкок', 'Ко Самуи', 'Пхукет',
 ].join('|');
 
+// False routes - airport names that look like city pairs (e.g., "Milan Bergamo" is BGY airport)
+const FALSE_ROUTES = new Set([
+  'milan-bergamo', 'milano-bergamo', 'milan bergamo', 'milano bergamo',
+  'london-stansted', 'london-luton', 'london-gatwick', 'london-heathrow',
+  'frankfurt-hahn', 'paris-beauvais', 'paris-orly', 'new york-jfk',
+]);
+
+function isFalseRoute(from: string, to: string): boolean {
+  const key1 = `${from.toLowerCase()}-${to.toLowerCase()}`;
+  const key2 = `${from.toLowerCase()} ${to.toLowerCase()}`;
+  return FALSE_ROUTES.has(key1) || FALSE_ROUTES.has(key2);
+}
+
 // Regex patterns for fallback parsing
 const PATTERNS = {
   // Booking reference: 6-7 alphanumeric chars with context
@@ -202,7 +215,10 @@ const PATTERNS = {
     /(?:booking|confirmation|reservation|pnr|reference|locator|бронирован|номер\s*заказа|код\s*бронирования|booking\s*code)[:\s#]+([A-Z0-9]{6,7})\b/gi,
     /(?:Confirmation\s+Code)[:\s]*([A-Z0-9]{5,7})\b/gi, // Expedia format: "Confirmation Code: UA5K7M"
     /(?:PIN-код|PIN)[:\s]*(\d{4,6})\b/gi, // Yandex format: "PIN-код: 5200"
-    /\b([A-Z][0-9][A-Z0-9]{4,5})\b/g, // Must have at least one digit (avoids "RYANAIR")
+    // Pegasus format: "BOOKING CODE" on one line, code on next line
+    /(?:BOOKING\s*CODE|КОД\s*БРОНИРОВАНИЯ)[\s\S]{0,30}?([A-Z]{2}[A-Z0-9]{4})\b/gi,
+    /\b([A-Z]{2}[0-9][A-Z0-9]{3})\b/g, // Mixed format like PC8M4N (2 letters + digit + 3 alphanumeric)
+    /\b([A-Z][0-9][A-Z0-9]{4,5})\b/g, // Letter + digit + 4-5 alphanumeric
     /Reservation[:\s]+([A-Z0-9]{6})/gi,  // Ryanair
   ],
   // Flight number: 2-3 letter airline code (may include digit like U2, W6, S7) + optional space + 1-4 digit number
@@ -353,21 +369,11 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
   }
 
   // Pattern 2: Simple "City - City" or "City to City"
-  // Exclude false routes that are actually airport names (e.g., "Milan Bergamo" is BGY airport)
-  const falseRoutes = new Set([
-    'milan-bergamo', 'milano-bergamo', 'milan bergamo', 'milano bergamo',
-    'london-stansted', 'london-luton', 'london-gatwick', 'london-heathrow',
-    'frankfurt-hahn', 'paris-beauvais', 'paris-orly', 'paris-charles de gaulle',
-  ]);
   if (routes.length === 0) {
     const cityRoutePattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–|—)\\s*(${CITY_NAMES})`, 'gi');
     while ((match = cityRoutePattern.exec(text)) !== null) {
       // Skip if this is an airport name, not a route
-      const routeKey = `${match[1].toLowerCase()}-${match[2].toLowerCase()}`;
-      const routeKeySpace = `${match[1].toLowerCase()} ${match[2].toLowerCase()}`;
-      if (falseRoutes.has(routeKey) || falseRoutes.has(routeKeySpace)) {
-        continue;
-      }
+      if (isFalseRoute(match[1], match[2])) continue;
       routes.push({ from: match[1], to: match[2], pos: match.index });
     }
   }
@@ -561,7 +567,7 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
     // Try city names in context (find closest) - multiple patterns
     if (!flightRoute) {
       const cityPattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–|—)\\s*(${CITY_NAMES})`, 'gi');
-      flightRoute = findClosestRouteMatch(cityPattern);
+      flightRoute = findClosestRouteMatch(cityPattern, (m) => !isFalseRoute(m[1], m[2]));
     }
 
     // Russian "из Города в Город" format
