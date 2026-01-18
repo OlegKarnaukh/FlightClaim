@@ -271,23 +271,29 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
       let dateStr = '';
       const m0 = match[0];
 
-      // Parse different formats
-      if (/^\d{4}/.test(m0)) {
-        // YYYY-MM-DD
-        dateStr = `${match[3]}/${match[2]}/${match[1]}`;
-      } else if (/[a-zа-я]/i.test(m0)) {
-        // Month name format
-        const day = match[1].padStart(2, '0');
-        const monthStr = match[2].toLowerCase().substring(0, 3);
-        const month = MONTH_TO_NUM[match[2].toLowerCase()] || MONTH_TO_NUM[monthStr] || '01';
-        const year = match[3];
-        dateStr = `${day}/${month}/${year}`;
-      } else {
-        // DD/MM/YYYY
-        dateStr = m0;
-      }
+      try {
+        // Parse different formats
+        if (/^\d{4}/.test(m0) && match[1] && match[2] && match[3]) {
+          // YYYY-MM-DD
+          dateStr = `${match[3]}/${match[2]}/${match[1]}`;
+        } else if (/[a-zа-я]/i.test(m0) && match[1] && match[2] && match[3]) {
+          // Month name format
+          const day = String(match[1]).padStart(2, '0');
+          const monthStr = String(match[2]).toLowerCase();
+          const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
+          const year = match[3];
+          dateStr = `${day}/${month}/${year}`;
+        } else if (m0) {
+          // DD/MM/YYYY - use as-is
+          dateStr = m0;
+        }
 
-      dates.push({ date: dateStr, pos: match.index });
+        if (dateStr) {
+          dates.push({ date: dateStr, pos: match.index });
+        }
+      } catch {
+        // Skip if parsing fails
+      }
     }
   }
 
@@ -498,7 +504,10 @@ export async function GET() {
         for (const flight of parsedFlights) {
           if (flight.confidence < 30) continue;
 
-          const key = flight.flightNumber;
+          // Use flightNumber + date as key to allow same flight on different dates (return flights)
+          const key = flight.departureTime
+            ? `${flight.flightNumber}_${flight.departureTime}`
+            : flight.flightNumber;
           const existing = flightMap.get(key);
 
           // Keep the one with higher confidence or more complete data
