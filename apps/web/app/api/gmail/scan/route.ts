@@ -217,19 +217,28 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
     }
   }
 
-  // 2. Find all flight numbers
+  // 2. Find all flight numbers (deduplicate: keep only FIRST occurrence of each)
   const flightNumbers: Array<{code: string, num: string, pos: number}> = [];
+  const seenFlightNumbers = new Set<string>();
   PATTERNS.flightNumber.lastIndex = 0;
   let match;
   while ((match = PATTERNS.flightNumber.exec(text)) !== null) {
     const airlineCode = match[1].toUpperCase();
     // Validate airline code
     if (AIRLINE_CODES.has(airlineCode) || AIRLINE_CODES.has(airlineCode.substring(0, 2))) {
-      flightNumbers.push({
-        code: airlineCode,
-        num: match[2],
-        pos: match.index,
-      });
+      // Normalize flight number for deduplication
+      const normalizedCode = (airlineCode === 'EZY' || airlineCode === 'EJU') ? 'U2' : airlineCode;
+      const flightKey = `${normalizedCode}${match[2]}`;
+
+      // Only keep first occurrence of each flight number
+      if (!seenFlightNumbers.has(flightKey)) {
+        seenFlightNumbers.add(flightKey);
+        flightNumbers.push({
+          code: airlineCode,
+          num: match[2],
+          pos: match.index,
+        });
+      }
     }
   }
 
