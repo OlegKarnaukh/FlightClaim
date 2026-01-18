@@ -258,14 +258,22 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
   // 3b. Try city names if no IATA routes found
   if (routes.length === 0) {
     // Pattern 1: Simple "City - City" or "City to City"
-    const cityRoutePattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–)\\s*(${CITY_NAMES})`, 'gi');
+    const cityRoutePattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–|—)\\s*(${CITY_NAMES})`, 'gi');
     while ((match = cityRoutePattern.exec(text)) !== null) {
       routes.push({ from: match[1], to: match[2], pos: match.index });
     }
 
-    // Pattern 2: "City (Airport) - City (Airport)" (Ryanair style)
+    // Pattern 2: Russian "из Города в Город"
     if (routes.length === 0) {
-      const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–]\\s*(${CITY_NAMES})`, 'gi');
+      const russianFromTo = new RegExp(`из\\s+(${CITY_NAMES})\\s+в\\s+(${CITY_NAMES})`, 'gi');
+      while ((match = russianFromTo.exec(text)) !== null) {
+        routes.push({ from: match[1], to: match[2], pos: match.index });
+      }
+    }
+
+    // Pattern 3: "City (Airport) - City (Airport)" (Ryanair style)
+    if (routes.length === 0) {
+      const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–—]\\s*(${CITY_NAMES})`, 'gi');
       while ((match = ryanairPattern.exec(text)) !== null) {
         routes.push({ from: match[1], to: match[2], pos: match.index });
       }
@@ -308,9 +316,9 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
 
   // 5. Match flight numbers with routes and dates using context window
   for (const fn of flightNumbers) {
-    // Create context window around flight number (1500 chars each direction)
-    const contextStart = Math.max(0, fn.pos - 1500);
-    const contextEnd = Math.min(text.length, fn.pos + 1500);
+    // Create context window around flight number (500 chars each direction - smaller is more accurate)
+    const contextStart = Math.max(0, fn.pos - 500);
+    const contextEnd = Math.min(text.length, fn.pos + 500);
     const context = text.substring(contextStart, contextEnd);
     const fnPosInContext = fn.pos - contextStart; // Position of flight number in context
 
@@ -333,7 +341,7 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
     let flightRoute: {from: string, to: string} | null = null;
 
     // Try IATA codes in context (find closest)
-    const iataPattern = /\b([A-Z]{3})\s*(?:to|→|->|-|–)\s*([A-Z]{3})\b/gi;
+    const iataPattern = /\b([A-Z]{3})\s*(?:to|→|->|-|–|—)\s*([A-Z]{3})\b/gi;
     flightRoute = findClosestRouteMatch(iataPattern, (m) =>
       AIRPORT_CODES.has(m[1].toUpperCase()) && AIRPORT_CODES.has(m[2].toUpperCase())
     );
@@ -341,15 +349,22 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
       flightRoute = { from: flightRoute.from.toUpperCase(), to: flightRoute.to.toUpperCase() };
     }
 
-    // Try city names in context (find closest)
+    // Try city names in context (find closest) - multiple patterns
     if (!flightRoute) {
-      const cityPattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–)\\s*(${CITY_NAMES})`, 'gi');
+      // Pattern 1: "City - City" or "City to City" or "City → City"
+      const cityPattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–|—)\\s*(${CITY_NAMES})`, 'gi');
       flightRoute = findClosestRouteMatch(cityPattern);
     }
 
-    // Try Ryanair format in context (find closest)
+    // Pattern 2: Russian "из Города в Город" format
     if (!flightRoute) {
-      const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–]\\s*(${CITY_NAMES})`, 'gi');
+      const russianFromTo = new RegExp(`из\\s+(${CITY_NAMES})\\s+в\\s+(${CITY_NAMES})`, 'gi');
+      flightRoute = findClosestRouteMatch(russianFromTo);
+    }
+
+    // Pattern 3: Ryanair format "City (Airport) - City (Airport)"
+    if (!flightRoute) {
+      const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–—]\\s*(${CITY_NAMES})`, 'gi');
       flightRoute = findClosestRouteMatch(ryanairPattern);
     }
 
