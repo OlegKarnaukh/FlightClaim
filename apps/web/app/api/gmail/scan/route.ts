@@ -217,8 +217,9 @@ const PATTERNS = {
     /(?:PIN-код|PIN)[:\s]*(\d{4,6})\b/gi, // Yandex format: "PIN-код: 5200"
     // Pegasus format: "BOOKING CODE" on one line, code on next line
     /(?:BOOKING\s*CODE|КОД\s*БРОНИРОВАНИЯ)[\s\S]{0,30}?([A-Z]{2}[A-Z0-9]{4})\b/gi,
-    /\b([A-Z]{2}[0-9][A-Z0-9]{3})\b/g, // Mixed format like PC8M4N (2 letters + digit + 3 alphanumeric)
-    /\b([A-Z][0-9][A-Z0-9]{4,5})\b/g, // Letter + digit + 4-5 alphanumeric
+    // Mixed alphanumeric refs MUST have letter after digits (to exclude flight numbers like PC1212)
+    /\b([A-Z]{2}[0-9][A-Z][A-Z0-9]{2})\b/g, // Like PC8M4N - has letter after digit
+    /\b([A-Z][0-9][A-Z][A-Z0-9]{3,4})\b/g, // Like K7G7F5N - letter after first digit
     /Reservation[:\s]+([A-Z0-9]{6})/gi,  // Ryanair
   ],
   // Flight number: 2-3 letter airline code (may include digit like U2, W6, S7) + optional space + 1-4 digit number
@@ -580,6 +581,21 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
     if (!flightRoute) {
       const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–—]\\s*(${CITY_NAMES})`, 'gi');
       flightRoute = findClosestRouteMatch(ryanairPattern);
+    }
+
+    // Pegasus format "Откуда / From: City (MXP)" and "Куда / To: City (SAW)"
+    if (!flightRoute) {
+      const pegasusFromPattern = /(?:Откуда|From)[:\s/]*[^(]{0,50}?\(([A-Z]{3})\)/gi;
+      const pegasusToPattern = /(?:Куда|To)[:\s/]*[^(]{0,50}?\(([A-Z]{3})\)/gi;
+      const fromMatch = pegasusFromPattern.exec(context);
+      const toMatch = pegasusToPattern.exec(context);
+      if (fromMatch && toMatch) {
+        const from = fromMatch[1].toUpperCase();
+        const to = toMatch[1].toUpperCase();
+        if (AIRPORT_CODES.has(from) && AIRPORT_CODES.has(to)) {
+          flightRoute = { from, to };
+        }
+      }
     }
 
     // Expedia format "Departure Airport: City (CODE)...Arrival Airport: City (CODE)"
