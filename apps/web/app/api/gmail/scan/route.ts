@@ -343,18 +343,26 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
     let flightDate = '';
     for (const pattern of PATTERNS.date) {
       const dateMatch = context.match(pattern);
-      if (dateMatch) {
+      if (dateMatch && dateMatch[0]) {
         const m0 = dateMatch[0];
-        if (/^\d{4}/.test(m0)) {
-          flightDate = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
-        } else if (/[a-zа-я]/i.test(m0)) {
-          const day = dateMatch[1].padStart(2, '0');
-          const month = MONTH_TO_NUM[dateMatch[2].toLowerCase()] || MONTH_TO_NUM[dateMatch[2].toLowerCase().substring(0, 3)] || '01';
-          flightDate = `${day}/${month}/${dateMatch[3]}`;
-        } else {
-          flightDate = m0;
+        try {
+          if (/^\d{4}/.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
+            // YYYY-MM-DD format
+            flightDate = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
+          } else if (/[a-zа-я]/i.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
+            // DD Month YYYY format
+            const day = String(dateMatch[1]).padStart(2, '0');
+            const monthStr = String(dateMatch[2]).toLowerCase();
+            const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
+            flightDate = `${day}/${month}/${dateMatch[3]}`;
+          } else if (/^\d{1,2}[\/\-\.]/.test(m0)) {
+            // DD/MM/YYYY format - use as-is
+            flightDate = m0;
+          }
+        } catch {
+          // Skip if parsing fails
         }
-        break;
+        if (flightDate) break;
       }
     }
 
