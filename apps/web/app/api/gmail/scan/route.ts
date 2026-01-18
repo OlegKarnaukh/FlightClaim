@@ -388,7 +388,9 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
           dateStr = `${match[3]}/${match[2]}/${match[1]}`;
         } else if (/[a-zа-яęΑ-Ωα-ω]/i.test(m0) && match[1] && match[2]) {
           // Month name format - detect if month comes first (US format: "September 10, 2026")
-          const isMonthFirst = /^[a-zа-яęΑ-Ωα-ω]/i.test(m0.trim());
+          // First, strip weekday prefix like "Sun", "Mon" etc. before checking
+          const dateWithoutWeekday = m0.replace(/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[,.\s]*/i, '').trim();
+          const isMonthFirst = /^[a-zа-яęΑ-Ωα-ω]/i.test(dateWithoutWeekday);
           let day: string, monthStr: string, year: string;
 
           if (isMonthFirst) {
