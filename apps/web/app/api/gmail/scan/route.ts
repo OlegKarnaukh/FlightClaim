@@ -8,7 +8,9 @@ import { authOptions } from '@/lib/auth';
 // ============================================================================
 
 const AIRLINE_DOMAINS = [
-  'ryanair.com', 'easyjet.com', 'lufthansa.com', 'wizzair.com', 'vueling.com',
+  'ryanair.com', 'ryanairmail.com', 'rfrmail.com', // Ryanair uses multiple domains
+  'easyjet.com', 'mail.easyjet.com',
+  'lufthansa.com', 'wizzair.com', 'vueling.com',
   'airbaltic.com', 'klm.com', 'airfrance.com', 'britishairways.com', 'iberia.com',
   'turkishairlines.com', 'emirates.com', 'qatarairways.com', 'flypgs.com',
   'pegasus.com', 'bangkokair.com', 'aeroflot.ru', 's7.ru', 'norwegian.com',
