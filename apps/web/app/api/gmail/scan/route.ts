@@ -181,8 +181,8 @@ const PATTERNS = {
     /\b([A-Z][A-Z0-9]{5})\b(?=\s*(?:\||booking|confirmation))/gi,
     /Reservation[:\s]+([A-Z0-9]{6})/gi,  // Ryanair
   ],
-  // Flight number: 2-letter airline code + 1-4 digit number
-  flightNumber: /\b([A-Z]{2})\s?(\d{1,4})\b/g,
+  // Flight number: 2-3 letter airline code + 1-4 digit number
+  flightNumber: /\b(EZY|EJU|[A-Z]{2})\s?(\d{1,4})\b/g,
   // IATA airport codes in context
   airportRoute: /\b([A-Z]{3})\s*(?:to|→|->|-|–)\s*([A-Z]{3})\b/gi,
   // Date formats
@@ -246,9 +246,18 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
 
   // 3b. Try city names if no IATA routes found
   if (routes.length === 0) {
+    // Pattern 1: Simple "City - City" or "City to City"
     const cityRoutePattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–)\\s*(${CITY_NAMES})`, 'gi');
     while ((match = cityRoutePattern.exec(text)) !== null) {
       routes.push({ from: match[1], to: match[2], pos: match.index });
+    }
+
+    // Pattern 2: "City (Airport) - City (Airport)" (Ryanair style)
+    if (routes.length === 0) {
+      const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–]\\s*(${CITY_NAMES})`, 'gi');
+      while ((match = ryanairPattern.exec(text)) !== null) {
+        routes.push({ from: match[1], to: match[2], pos: match.index });
+      }
     }
   }
 
