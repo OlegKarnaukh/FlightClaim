@@ -27,16 +27,20 @@ const AIRPORT_CODES = new Set([
   'CPH', 'ARN', 'OSL', 'HEL', 'RIX', 'ATH', 'LIS', 'OPO',
   'IST', 'SAW', 'AYT', 'SVO', 'LED', 'DXB', 'DOH',
   'BKK', 'HKT', 'USM', 'SIN', 'NRT', 'JFK',
+  // Additional Turkish airports
+  'ADB', 'ESB', 'DLM', 'BJV', 'TZX', 'GZT',
 ]);
 
 const CITY_NAMES = 'London|Paris|Berlin|Rome|Milan|Madrid|Barcelona|Amsterdam|Frankfurt|Munich|Vienna|Prague|Budapest|Warsaw|Dublin|Brussels|Lisbon|Athens|Stockholm|Copenhagen|Istanbul|Moscow|Bangkok|Phuket|Singapore|Dubai|Gatwick|Stansted|Милан|Стамбул|Бангкок';
 
 const PATTERNS = {
   bookingRef: [
-    /(?:booking|confirmation|reservation|pnr|reference|бронирован|код\s*бронирования|booking\s*code)[:\s#]+([A-Z0-9]{5,8})\b/gi,
-    /\b([A-Z][A-Z0-9]{5,6})\b/g,
+    /(?:booking|confirmation|reservation|pnr|reference|бронирован|код\s*бронирования|booking\s*code)[:\s#]+([A-Z0-9]{6,7})\b/gi,
+    /(?:Booking\s+Reference)[^A-Z0-9]*([A-Z0-9]{6})\b/gi, // Table format: "Booking Reference ... ABC123"
+    /\b([A-Z]{2,3}[0-9]{3,4})\b/g, // Pattern like ABC123, XY1234
+    /\b([A-Z][0-9][A-Z0-9]{4,5})\b/g, // Must have digit (avoids "RYANAIR")
   ],
-  flightNumber: /\b(EZY|EJU|TG|PG|[A-Z]{2})\s?(\d{1,4})\b/g,
+  flightNumber: /\b(EZY|EJU|TG|PG|[A-Z][A-Z0-9])\s*(\d{1,4})\b/g,
   airportRoute: /\b([A-Z]{3})\s*(?:to|→|->|-|–)\s*([A-Z]{3})\b/gi,
   date: [
     /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g,
@@ -99,6 +103,12 @@ function extractText(html) {
     .trim();
 }
 
+// Words that look like booking refs but aren't
+const BOOKING_BLACKLIST = new Set([
+  'EASYJET', 'RYANAIR', 'WIZZAIR', 'BOOKING', 'DETAILS', 'FLIGHT', 'NUMBER',
+  'WIZZ', 'CANCEL', 'PLEASE', 'TRAVEL', 'ONLINE', 'CHECKIN',
+]);
+
 function parseWithRegex(text, emailFrom) {
   emailFrom = emailFrom || '';
   const flights = [];
@@ -107,11 +117,16 @@ function parseWithRegex(text, emailFrom) {
   let bookingRef = '';
   for (const pattern of PATTERNS.bookingRef) {
     pattern.lastIndex = 0;
-    const match = pattern.exec(text);
-    if (match && match[1].length >= 6) {
-      bookingRef = match[1].toUpperCase();
-      break;
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const ref = match[1].toUpperCase();
+      // Skip blacklisted words and refs that are all letters (likely words)
+      if (!BOOKING_BLACKLIST.has(ref) && /\d/.test(ref)) {
+        bookingRef = ref;
+        break;
+      }
     }
+    if (bookingRef) break;
   }
 
   // Find flight numbers
@@ -130,7 +145,7 @@ function parseWithRegex(text, emailFrom) {
     }
   }
 
-  // Find routes - IATA
+  // Find routes - IATA codes with arrow
   const routes = [];
   PATTERNS.airportRoute.lastIndex = 0;
   while ((match = PATTERNS.airportRoute.exec(text)) !== null) {
@@ -138,6 +153,34 @@ function parseWithRegex(text, emailFrom) {
     const to = match[2].toUpperCase();
     if (AIRPORT_CODES.has(from) && AIRPORT_CODES.has(to)) {
       routes.push({ from: from, to: to, pos: match.index });
+    }
+  }
+
+  // Find routes - Format: "City (CODE) → City (CODE)" like "London Gatwick (LGW) → Barcelona (BCN)"
+  if (routes.length === 0) {
+    const cityCodePattern = /\(([A-Z]{3})\)\s*(?:→|->|to|-|–)\s*[^(]*\(([A-Z]{3})\)/gi;
+    while ((match = cityCodePattern.exec(text)) !== null) {
+      const from = match[1].toUpperCase();
+      const to = match[2].toUpperCase();
+      if (AIRPORT_CODES.has(from) && AIRPORT_CODES.has(to)) {
+        routes.push({ from: from, to: to, pos: match.index });
+      }
+    }
+  }
+
+  // Find routes - Separate From/To fields with IATA codes in parentheses
+  if (routes.length === 0) {
+    // Use word boundary to avoid matching "куда" inside "Откуда"
+    const fromPattern = /(?:^|\s)(?:From|Откуда)[:\s/]*[^(]{0,50}?\(([A-Z]{3})\)/gi;
+    const toPattern = /(?:^|\s)(?:To(?:\s|:)|Куда)[:\s/]*[^(]{0,50}?\(([A-Z]{3})\)/gi;
+    const fromMatch = fromPattern.exec(text);
+    const toMatch = toPattern.exec(text);
+    if (fromMatch && toMatch) {
+      const from = fromMatch[1].toUpperCase();
+      const to = toMatch[1].toUpperCase();
+      if (AIRPORT_CODES.has(from) && AIRPORT_CODES.has(to)) {
+        routes.push({ from: from, to: to, pos: fromMatch.index });
+      }
     }
   }
 
@@ -213,6 +256,8 @@ function parseWithRegex(text, emailFrom) {
 
     flights.push({
       flightNumber: flightNumber,
+      airlineCode: fn.code, // Keep original code for display
+      flightNum: fn.num,    // Keep original number for display
       airline: fn.code.substring(0, 2),
       from: route ? route.from : '',
       to: route ? route.to : '',
@@ -292,7 +337,8 @@ for (const file of files) {
   }
 
   const f = flights[0];
-  const normalizedFlightNum = f.flightNumber.replace(/(\D+)(\d+)/, '$1 $2');
+  // Use stored code and number for proper display
+  const normalizedFlightNum = f.airlineCode ? (f.airlineCode + ' ' + f.flightNum) : f.flightNumber;
 
   console.log('   Method: ' + method);
   console.log('   Flights found: ' + flights.length);

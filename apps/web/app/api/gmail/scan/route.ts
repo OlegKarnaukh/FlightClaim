@@ -189,14 +189,14 @@ const CITY_NAMES = [
 
 // Regex patterns for fallback parsing
 const PATTERNS = {
-  // Booking reference: 6 alphanumeric chars
+  // Booking reference: 6-7 alphanumeric chars with context
   bookingRef: [
-    /(?:booking|confirmation|reservation|pnr|reference|locator|бронирован|номер\s*заказа)[:\s#]+([A-Z0-9]{6})\b/gi,
-    /\b([A-Z][A-Z0-9]{5})\b(?=\s*(?:\||booking|confirmation))/gi,
+    /(?:booking|confirmation|reservation|pnr|reference|locator|бронирован|номер\s*заказа|код\s*бронирования|booking\s*code)[:\s#]+([A-Z0-9]{6,7})\b/gi,
+    /\b([A-Z][0-9][A-Z0-9]{4,5})\b/g, // Must have at least one digit (avoids "RYANAIR")
     /Reservation[:\s]+([A-Z0-9]{6})/gi,  // Ryanair
   ],
-  // Flight number: 2-3 letter airline code + 1-4 digit number
-  flightNumber: /\b(EZY|EJU|[A-Z]{2})\s?(\d{1,4})\b/g,
+  // Flight number: 2-3 letter airline code (may include digit like U2, W6, S7) + optional space + 1-4 digit number
+  flightNumber: /\b(EZY|EJU|[A-Z][A-Z0-9])\s*(\d{1,4})\b/g,
   // IATA airport codes in context
   airportRoute: /\b([A-Z]{3})\s*(?:to|→|->|-|–)\s*([A-Z]{3})\b/gi,
   // Date formats
