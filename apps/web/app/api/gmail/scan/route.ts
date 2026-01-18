@@ -569,7 +569,7 @@ export async function GET() {
     const response = await gmail.users.messages.list({
       userId: 'me',
       q: query,
-      maxResults: 100,
+      maxResults: 300,
     });
 
     const messages = response.data.messages || [];
@@ -579,7 +579,7 @@ export async function GET() {
     const flightMap = new Map<string, FlightInfo>();
 
     let emailIndex = 0;
-    for (const msg of messages.slice(0, 50)) {
+    for (const msg of messages.slice(0, 150)) {
       emailIndex++;
       try {
         const detail = await gmail.users.messages.get({
@@ -595,7 +595,7 @@ export async function GET() {
         const snippet = detail.data.snippet || '';
 
         // DEBUG: Log ALL emails to see what's being processed
-        console.log(`[${emailIndex}/50] From: ${fromHeader.substring(0, 40)} | Subj: ${subject.substring(0, 40)}`);
+        console.log(`[${emailIndex}/150] From: ${fromHeader.substring(0, 40)} | Subj: ${subject.substring(0, 40)}`);
 
         const bodyHtml = extractBodyHtml(detail.data.payload);
         const bodyText = extractBodyText(detail.data.payload);
