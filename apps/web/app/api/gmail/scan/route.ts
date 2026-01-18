@@ -18,6 +18,13 @@ const OTA_DOMAINS = [
   'trip.com', 'booking.com', 'expedia.com', 'skyscanner.com', 'kayak.com', 'kiwi.com',
 ];
 
+// Content patterns for forwarded emails
+const CONTENT_PATTERNS = [
+  '"Ryanair DAC"', '"ryanairmail.com"', '"easyJet booking"',
+  '"Trip.com"', '"Бронирование авиабилета"', '"электронные билеты"',
+  '"flight confirmation"', '"booking reference"', '"e-ticket"',
+];
+
 // Build Gmail search query
 function buildGmailQuery(yearsBack: number = 3): string {
   const afterDate = new Date();
@@ -25,10 +32,10 @@ function buildGmailQuery(yearsBack: number = 3): string {
   const dateStr = afterDate.toISOString().split('T')[0].replace(/-/g, '/');
 
   const fromQueries = [...AIRLINE_DOMAINS, ...OTA_DOMAINS].map(d => `from:${d}`);
-  const subjectKeywords = ['flight', 'booking', 'confirmation', 'itinerary', 'e-ticket', 'reservation'];
+  const subjectKeywords = ['flight', 'booking', 'confirmation', 'itinerary', 'e-ticket', 'reservation', 'рейс', 'бронирование'];
   const subjectQueries = subjectKeywords.map(k => `subject:${k}`);
 
-  return `(${fromQueries.join(' OR ')} OR ${subjectQueries.join(' OR ')}) after:${dateStr}`;
+  return `(${fromQueries.join(' OR ')} OR ${subjectQueries.join(' OR ')} OR ${CONTENT_PATTERNS.join(' OR ')}) after:${dateStr}`;
 }
 
 // ============================================================================
@@ -144,12 +151,35 @@ const AIRPORT_TO_CITY: Record<string, string> = {
   'TFS': 'Tenerife', 'LPA': 'Gran Canaria', 'ACE': 'Lanzarote', 'RAK': 'Marrakech',
 };
 
+// City names for route detection
+const CITY_NAMES = [
+  // Major European cities
+  'London', 'Paris', 'Berlin', 'Rome', 'Milan', 'Madrid', 'Barcelona', 'Amsterdam',
+  'Frankfurt', 'Munich', 'Vienna', 'Prague', 'Budapest', 'Warsaw', 'Krakow',
+  'Dublin', 'Brussels', 'Lisbon', 'Porto', 'Athens', 'Stockholm', 'Copenhagen',
+  'Oslo', 'Helsinki', 'Riga', 'Tallinn', 'Vilnius', 'Zurich', 'Geneva',
+  // Airports/regions
+  'Stansted', 'Gatwick', 'Luton', 'Heathrow', 'Bergamo', 'Malpensa', 'Fiumicino',
+  'Cologne', 'Dusseldorf', 'Hamburg', 'Malaga', 'Alicante', 'Valencia', 'Palma',
+  'Nice', 'Marseille', 'Lyon', 'Charleroi', 'Eindhoven',
+  // Turkey
+  'Istanbul', 'Antalya', 'Bodrum', 'Dalaman',
+  // Russia
+  'Moscow', 'St. Petersburg', 'Sochi',
+  // Asia
+  'Bangkok', 'Phuket', 'Ko Samui', 'Singapore', 'Dubai',
+  // Russian names
+  'Милан', 'Рим', 'Париж', 'Лондон', 'Берлин', 'Барселона', 'Мадрид',
+  'Стамбул', 'Москва', 'Санкт-Петербург', 'Бангкок', 'Ко Самуи', 'Пхукет',
+].join('|');
+
 // Regex patterns for fallback parsing
 const PATTERNS = {
   // Booking reference: 6 alphanumeric chars
   bookingRef: [
-    /(?:booking|confirmation|reservation|pnr|reference|locator)[:\s#]+([A-Z0-9]{6})\b/gi,
+    /(?:booking|confirmation|reservation|pnr|reference|locator|бронирован|номер\s*заказа)[:\s#]+([A-Z0-9]{6})\b/gi,
     /\b([A-Z][A-Z0-9]{5})\b(?=\s*(?:\||booking|confirmation))/gi,
+    /Reservation[:\s]+([A-Z0-9]{6})/gi,  // Ryanair
   ],
   // Flight number: 2-letter airline code + 1-4 digit number
   flightNumber: /\b([A-Z]{2})\s?(\d{1,4})\b/g,
@@ -201,14 +231,24 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
     }
   }
 
-  // 3. Find airport routes (IATA codes)
+  // 3. Find routes (IATA codes OR city names)
   const routes: Array<{from: string, to: string, pos: number}> = [];
+
+  // 3a. Try IATA codes first
   PATTERNS.airportRoute.lastIndex = 0;
   while ((match = PATTERNS.airportRoute.exec(text)) !== null) {
     const from = match[1].toUpperCase();
     const to = match[2].toUpperCase();
     if (AIRPORT_CODES.has(from) && AIRPORT_CODES.has(to)) {
       routes.push({ from, to, pos: match.index });
+    }
+  }
+
+  // 3b. Try city names if no IATA routes found
+  if (routes.length === 0) {
+    const cityRoutePattern = new RegExp(`(${CITY_NAMES})\\s*(?:to|→|->|-|–)\\s*(${CITY_NAMES})`, 'gi');
+    while ((match = cityRoutePattern.exec(text)) !== null) {
+      routes.push({ from: match[1], to: match[2], pos: match.index });
     }
   }
 
@@ -365,9 +405,9 @@ export async function GET() {
           parsedFlights = parseWithRegex(textToSearch, dateHeader);
         }
 
-        // Store flights with confidence > 50
+        // Store flights with confidence >= 40
         for (const flight of parsedFlights) {
-          if (flight.confidence < 50) continue;
+          if (flight.confidence < 40) continue;
 
           const key = flight.flightNumber;
           const existing = flightMap.get(key);
