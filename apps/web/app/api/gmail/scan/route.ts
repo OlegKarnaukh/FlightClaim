@@ -218,6 +218,9 @@ const MONTH_TO_NUM: Record<string, string> = {
 function parseWithRegex(text: string, emailDate: string): FlightData[] {
   const flights: FlightData[] = [];
 
+  // Invalid booking references to filter out
+  const INVALID_REFS = new Set(['MANAGE', 'WITHIN', 'NUMBER', 'BOOKING', 'FLIGHT', 'TRAVEL', 'PLEASE', 'BEFORE', 'CHANGE', 'CANCEL', 'ONLINE', 'MOBILE']);
+
   // Helper: extract year from email date header for dates without year
   function getYearFromEmailDate(): string {
     if (!emailDate) return new Date().getFullYear().toString();
@@ -232,8 +235,16 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
     pattern.lastIndex = 0;
     const match = pattern.exec(text);
     if (match) {
-      bookingRef = match[1].toUpperCase();
-      break;
+      const candidate = match[1].toUpperCase();
+      // Filter out invalid refs
+      if (!INVALID_REFS.has(candidate) && !/^[A-Z]{6}$/.test(candidate)) {
+        // Valid: has at least one digit or is not all letters
+        bookingRef = candidate;
+        break;
+      } else if (!INVALID_REFS.has(candidate) && /[0-9]/.test(candidate)) {
+        bookingRef = candidate;
+        break;
+      }
     }
   }
 
@@ -633,14 +644,14 @@ export async function GET() {
             console.log(`[DEBUG] Body preview: ${bodyText.substring(0, 500)}`);
           }
           for (const f of parsedFlights) {
-            const status = f.confidence >= 30 ? '✓' : '❌';
+            const status = f.confidence >= 50 ? '✓' : '❌';
             console.log(`  ${status} ${f.flightNumber}: ${f.from}→${f.to}, ${f.departureTime}, conf=${f.confidence}, ref=${f.bookingRef || '-'}`);
           }
         }
 
-        // Store flights with confidence >= 30 (lowered for debugging)
+        // Store flights with confidence >= 50
         for (const flight of parsedFlights) {
-          if (flight.confidence < 30) continue;
+          if (flight.confidence < 50) continue;
 
           // Use flightNumber + date as key to allow same flight on different dates (return flights)
           const key = flight.departureTime
