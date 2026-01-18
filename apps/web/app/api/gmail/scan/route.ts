@@ -104,11 +104,13 @@ function parseJsonLD(html: string): FlightData[] {
 // LEVEL 3: REGEX FALLBACK
 // ============================================================================
 
-// Valid airline IATA codes (2 letters)
+// Valid airline IATA codes (2 letters or 3-letter codes like EZY)
 const AIRLINE_CODES = new Set([
   'FR', 'U2', 'LH', 'W6', 'VY', 'BT', 'KL', 'AF', 'BA', 'IB', 'TK', 'EK', 'QR',
   'PC', 'PG', 'SU', 'S7', 'U6', 'DP', 'DY', 'SK', 'AY', 'LX', 'OS', 'LO', 'TP', 'A3',
   'EI', 'AZ', 'SN', 'LG', 'EW', 'EN', 'HV', 'TO', 'BJ', 'XQ', 'TOM', 'EZY', 'EJU',
+  // Additional airlines
+  'UA', 'I2', 'FZ', 'FY', // United, Iberia Express, flydubai, Kiwi
 ]);
 
 // Valid airport IATA codes (subset of major European + common destinations)
@@ -143,6 +145,8 @@ const AIRPORT_CODES = new Set([
   'BKK', 'DMK', 'HKT', 'USM', 'CNX', 'SIN', 'KUL', 'HKG', 'NRT', 'ICN', 'PEK', 'PVG',
   // North Africa
   'RAK', 'CMN', 'AGA', 'TUN', 'CAI', 'HRG', 'SSH',
+  // North America (for long-haul from EU)
+  'SFO', 'LAX', 'ORD', 'EWR', 'JFK', 'IAD', 'BOS', 'MIA', 'YYZ', 'YVR',
 ]);
 
 // Airport to city name mapping (for display)
@@ -192,6 +196,7 @@ const PATTERNS = {
   // Booking reference: 6-7 alphanumeric chars with context
   bookingRef: [
     /(?:booking|confirmation|reservation|pnr|reference|locator|бронирован|номер\s*заказа|код\s*бронирования|booking\s*code)[:\s#]+([A-Z0-9]{6,7})\b/gi,
+    /(?:Confirmation\s+Code)[:\s]*([A-Z0-9]{5,7})\b/gi, // Expedia format: "Confirmation Code: UA5K7M"
     /\b([A-Z][0-9][A-Z0-9]{4,5})\b/g, // Must have at least one digit (avoids "RYANAIR")
     /Reservation[:\s]+([A-Z0-9]{6})/gi,  // Ryanair
   ],
@@ -204,10 +209,17 @@ const PATTERNS = {
     /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g,                    // 25/03/2024
     /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/g,                    // 2024-03-25
     /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})/gi, // 25 March 2024
+    /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/gi, // US: September 10, 2026
     /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[,\s]+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})\b/gi, // Wed, 04 Sep 24 OR Wed 04 Sep 2024
     /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})\b/gi, // 04 Sep 24 OR 04 Sep 2024
     /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/gi, // Sun 09 Jun (no year - will infer)
     /(\d{1,2})\s+(янв|фев|мар|апр|мая|май|июн|июл|авг|сен|окт|ноя|дек)[а-я]*\.?\s+(\d{4})/gi, // Russian: 17 нояб. 2024 or 17 ноября 2024
+    // Italian: "22 settembre 2026"
+    /(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+(\d{4})/gi,
+    // Spanish: "12 de noviembre de 2026"
+    /(\d{1,2})\s+(?:de\s+)?(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(?:\s+de)?\s+(\d{4})/gi,
+    // Polish: "18 grudnia 2026"
+    /(\d{1,2})\s+(stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia)\s+(\d{4})/gi,
   ],
   // Passenger name patterns
   passengerName: [
@@ -218,8 +230,11 @@ const PATTERNS = {
 };
 
 const MONTH_TO_NUM: Record<string, string> = {
+  // English
   'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
   'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12',
+  'january': '01', 'february': '02', 'march': '03', 'april': '04', 'june': '06',
+  'july': '07', 'august': '08', 'september': '09', 'october': '10', 'november': '11', 'december': '12',
   // Russian full names
   'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04', 'мая': '05', 'июня': '06',
   'июля': '07', 'августа': '08', 'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12',
@@ -227,6 +242,15 @@ const MONTH_TO_NUM: Record<string, string> = {
   'янв': '01', 'фев': '02', 'мар': '03', 'апр': '04', 'май': '05', 'июн': '06',
   'июл': '07', 'авг': '08', 'сен': '09', 'окт': '10', 'ноя': '11', 'дек': '12',
   'нояб': '11', 'сент': '09', // longer abbreviations
+  // Italian
+  'gennaio': '01', 'febbraio': '02', 'marzo': '03', 'aprile': '04', 'maggio': '05', 'giugno': '06',
+  'luglio': '07', 'agosto': '08', 'settembre': '09', 'ottobre': '10', 'novembre': '11', 'dicembre': '12',
+  // Spanish
+  'enero': '01', 'febrero': '02', 'abril': '04', 'mayo': '05', 'junio': '06',
+  'julio': '07', 'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12',
+  // Polish
+  'stycznia': '01', 'lutego': '02', 'marca': '03', 'kwietnia': '04', 'maja': '05', 'czerwca': '06',
+  'lipca': '07', 'sierpnia': '08', 'września': '09', 'października': '10', 'listopada': '11', 'grudnia': '12',
 };
 
 function parseWithRegex(text: string, emailDate: string, emailFrom: string = ''): FlightData[] {
@@ -344,21 +368,27 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
         if (/^\d{4}/.test(m0) && match[1] && match[2] && match[3]) {
           // YYYY-MM-DD
           dateStr = `${match[3]}/${match[2]}/${match[1]}`;
-        } else if (/[a-zа-я]/i.test(m0) && match[1] && match[2]) {
-          // Month name format (e.g., "Wed, 04 Sep 24" or "25 March 2024" or "Sun 09 Jun" - no year)
-          const day = String(match[1]).padStart(2, '0');
-          const monthStr = String(match[2]).toLowerCase();
-          const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
-          // Handle year: may be 2-digit (24 -> 2024), 4-digit, or missing (infer from email date)
-          let year: string;
-          if (match[3]) {
-            year = String(match[3]);
-            if (year.length === 2) {
-              year = '20' + year;
-            }
+        } else if (/[a-zа-яę]/i.test(m0) && match[1] && match[2]) {
+          // Month name format - detect if month comes first (US format: "September 10, 2026")
+          const isMonthFirst = /^[a-zа-яę]/i.test(m0.trim());
+          let day: string, monthStr: string, year: string;
+
+          if (isMonthFirst) {
+            // US format: Month DD, YYYY
+            monthStr = String(match[1]).toLowerCase();
+            day = String(match[2]).padStart(2, '0');
+            year = match[3] ? String(match[3]) : inferredYear;
           } else {
-            // No year in date - infer from email date
-            year = inferredYear;
+            // European format: DD Month YYYY
+            day = String(match[1]).padStart(2, '0');
+            monthStr = String(match[2]).toLowerCase();
+            year = match[3] ? String(match[3]) : inferredYear;
+          }
+
+          const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
+          // Handle 2-digit year
+          if (year.length === 2) {
+            year = '20' + year;
           }
           dateStr = `${day}/${month}/${year}`;
         } else if (m0) {
@@ -404,19 +434,25 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
           if (/^\d{4}/.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
             parsedDate = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
             dayMonth = `${String(dateMatch[3]).padStart(2, '0')}/${dateMatch[2]}`;
-          } else if (/[a-zа-я]/i.test(m0) && dateMatch[1] && dateMatch[2]) {
-            // Month name format - with or without year
-            const day = String(dateMatch[1]).padStart(2, '0');
-            const monthStr = String(dateMatch[2]).toLowerCase();
-            const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
-            let year: string;
-            if (dateMatch[3]) {
-              year = String(dateMatch[3]);
-              if (year.length === 2) year = '20' + year;
+          } else if (/[a-zа-яę]/i.test(m0) && dateMatch[1] && dateMatch[2]) {
+            // Month name format - detect if month comes first (US format)
+            const isMonthFirst = /^[a-zа-яę]/i.test(m0.trim());
+            let day: string, monthStr: string, year: string;
+
+            if (isMonthFirst) {
+              // US format: Month DD, YYYY
+              monthStr = String(dateMatch[1]).toLowerCase();
+              day = String(dateMatch[2]).padStart(2, '0');
+              year = dateMatch[3] ? String(dateMatch[3]) : inferredYear;
             } else {
-              // No year - infer from email date
-              year = inferredYear;
+              // European format: DD Month YYYY
+              day = String(dateMatch[1]).padStart(2, '0');
+              monthStr = String(dateMatch[2]).toLowerCase();
+              year = dateMatch[3] ? String(dateMatch[3]) : inferredYear;
             }
+
+            const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
+            if (year.length === 2) year = '20' + year;
             parsedDate = `${day}/${month}/${year}`;
             dayMonth = `${day}/${month}`;
           } else if (/^\d{1,2}[\/\-\.]/.test(m0)) {
@@ -488,6 +524,36 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
     if (!flightRoute) {
       const ryanairPattern = new RegExp(`(${CITY_NAMES})\\s*\\([^)]+\\)\\s*[-–—]\\s*(${CITY_NAMES})`, 'gi');
       flightRoute = findClosestRouteMatch(ryanairPattern);
+    }
+
+    // Expedia format "Departure Airport: City (CODE)...Arrival Airport: City (CODE)"
+    if (!flightRoute) {
+      const depAirportPattern = /Departure\s+Airport[:\s]*[^(]{0,50}?\(([A-Z]{3})\)/gi;
+      const arrAirportPattern = /Arrival\s+Airport[:\s]*[^(]{0,50}?\(([A-Z]{3})\)/gi;
+      const depMatch = depAirportPattern.exec(context);
+      const arrMatch = arrAirportPattern.exec(context);
+      if (depMatch && arrMatch) {
+        const from = depMatch[1].toUpperCase();
+        const to = arrMatch[1].toUpperCase();
+        if (AIRPORT_CODES.has(from) && AIRPORT_CODES.has(to)) {
+          flightRoute = { from, to };
+        }
+      }
+    }
+
+    // Spanish format "Salida Aeropuerto: City (CODE)...Llegada Aeropuerto: City (CODE)"
+    if (!flightRoute) {
+      const salidaPattern = /Salida\s+(?:Aeropuerto)?[:\s]*[^(]{0,50}?\(([A-Z]{3})\)/gi;
+      const llegadaPattern = /Llegada\s+(?:Aeropuerto)?[:\s]*[^(]{0,50}?\(([A-Z]{3})\)/gi;
+      const salidaMatch = salidaPattern.exec(context);
+      const llegadaMatch = llegadaPattern.exec(context);
+      if (salidaMatch && llegadaMatch) {
+        const from = salidaMatch[1].toUpperCase();
+        const to = llegadaMatch[1].toUpperCase();
+        if (AIRPORT_CODES.has(from) && AIRPORT_CODES.has(to)) {
+          flightRoute = { from, to };
+        }
+      }
     }
 
     // Fallback: use closest route from full email
