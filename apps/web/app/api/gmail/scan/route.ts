@@ -189,10 +189,10 @@ const CITY_NAMES = [
   // Russia
   'Moscow', 'St. Petersburg', 'Sochi',
   // Asia
-  'Bangkok', 'Phuket', 'Ko Samui', 'Singapore', 'Dubai',
+  'Bangkok', 'Phuket', 'Ko Samui', 'Singapore', 'Dubai', 'Almaty',
   // Russian names
   'Милан', 'Рим', 'Париж', 'Лондон', 'Берлин', 'Барселона', 'Мадрид',
-  'Стамбул', 'Москва', 'Санкт-Петербург', 'Бангкок', 'Ко Самуи', 'Пхукет',
+  'Стамбул', 'Москва', 'Санкт-Петербург', 'Бангкок', 'Ко Самуи', 'Пхукет', 'Алматы',
 ].join('|');
 
 // False routes - airport names that look like city pairs (e.g., "Milan Bergamo" is BGY airport)
@@ -200,6 +200,8 @@ const FALSE_ROUTES = new Set([
   'milan-bergamo', 'milano-bergamo', 'milan bergamo', 'milano bergamo',
   'london-stansted', 'london-luton', 'london-gatwick', 'london-heathrow',
   'frankfurt-hahn', 'paris-beauvais', 'paris-orly', 'new york-jfk',
+  // Pegasus airport names
+  'istanbul-sabiha', 'istanbul sabiha', 'sabiha-gokcen', 'sabiha gokcen',
 ]);
 
 function isFalseRoute(from: string, to: string): boolean {
@@ -215,7 +217,8 @@ const PATTERNS = {
     /(?:booking|confirmation|reservation|pnr|reference|locator|бронирован|номер\s*заказа|код\s*бронирования|booking\s*code)[:\s#]+([A-Z0-9]{6,7})\b/gi,
     /(?:Confirmation\s+Code)[:\s]*([A-Z0-9]{5,7})\b/gi, // Expedia format: "Confirmation Code: UA5K7M"
     /(?:PIN-код|PIN)[:\s]*(\d{4,6})\b/gi, // Yandex format: "PIN-код: 5200"
-    // Pegasus format: "BOOKING CODE" on one line, code on next line
+    // Pegasus format: "Reservation (PNR) No E29QDR" or "Номер подтверждения E29QDR"
+    /(?:Reservation\s*\(PNR\)\s*No|Номер\s*подтверждения)[:\s]*([A-Z0-9]{6})\b/gi,
     /(?:BOOKING\s*CODE|КОД\s*БРОНИРОВАНИЯ)[\s\S]{0,30}?([A-Z]{2}[A-Z0-9]{4})\b/gi,
     // Mixed alphanumeric refs MUST have letter after digits (to exclude flight numbers like PC1212)
     /\b([A-Z]{2}[0-9][A-Z][A-Z0-9]{2})\b/g, // Like PC8M4N - has letter after digit
@@ -625,6 +628,15 @@ function parseWithRegex(text: string, emailDate: string, emailFrom: string = '')
         if (AIRPORT_CODES.has(from) && AIRPORT_CODES.has(to)) {
           flightRoute = { from, to };
         }
+      }
+    }
+
+    // Pegasus format "City		City - Airport" (tabs between cities)
+    if (!flightRoute) {
+      const pegasusRoutePattern = new RegExp(`(${CITY_NAMES})\\s{2,}(${CITY_NAMES})(?:\\s*[-–]|$)`, 'gi');
+      const pegasusMatch = pegasusRoutePattern.exec(context);
+      if (pegasusMatch && !isFalseRoute(pegasusMatch[1], pegasusMatch[2])) {
+        flightRoute = { from: pegasusMatch[1], to: pegasusMatch[2] };
       }
     }
 
