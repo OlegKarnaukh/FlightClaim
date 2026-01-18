@@ -578,7 +578,9 @@ export async function GET() {
     // Process emails
     const flightMap = new Map<string, FlightInfo>();
 
+    let emailIndex = 0;
     for (const msg of messages.slice(0, 50)) {
+      emailIndex++;
       try {
         const detail = await gmail.users.messages.get({
           userId: 'me',
@@ -591,6 +593,9 @@ export async function GET() {
         const fromHeader = headers.find(h => h.name === 'From')?.value || '';
         const dateHeader = headers.find(h => h.name === 'Date')?.value || '';
         const snippet = detail.data.snippet || '';
+
+        // DEBUG: Log ALL emails to see what's being processed
+        console.log(`[${emailIndex}/50] From: ${fromHeader.substring(0, 40)} | Subj: ${subject.substring(0, 40)}`);
 
         const bodyHtml = extractBodyHtml(detail.data.payload);
         const bodyText = extractBodyText(detail.data.payload);
@@ -608,7 +613,10 @@ export async function GET() {
         // Debug: log all found flights before filtering
         const isEasyJetEmail = fromHeader.toLowerCase().includes('easyjet') ||
                                subject.toLowerCase().includes('easyjet') ||
-                               subject.toLowerCase().includes('time to fly');
+                               subject.toLowerCase().includes('time to fly') ||
+                               snippet.toLowerCase().includes('easyjet') ||
+                               snippet.toLowerCase().includes('eju') ||
+                               snippet.toLowerCase().includes('u2');
 
         if (parsedFlights.length > 0 || isEasyJetEmail) {
           console.log(`\n━━━ Email: ${subject.substring(0, 50)}... ━━━`);
