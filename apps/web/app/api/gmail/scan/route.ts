@@ -194,8 +194,9 @@ const PATTERNS = {
     /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g,                    // 25/03/2024
     /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/g,                    // 2024-03-25
     /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})/gi, // 25 March 2024
-    /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[,\s]+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2})\b/gi, // Wed, 04 Sep 24
-    /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2})\b/gi, // 04 Sep 24
+    /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[,\s]+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})\b/gi, // Wed, 04 Sep 24 OR Wed 04 Sep 2024
+    /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})\b/gi, // 04 Sep 24 OR 04 Sep 2024
+    /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/gi, // Sun 09 Jun (no year - will infer)
     /(\d{1,2})\s+(янв|фев|мар|апр|мая|май|июн|июл|авг|сен|окт|ноя|дек)[а-я]*\.?\s+(\d{4})/gi, // Russian: 17 нояб. 2024 or 17 ноября 2024
   ],
 };
@@ -214,6 +215,14 @@ const MONTH_TO_NUM: Record<string, string> = {
 
 function parseWithRegex(text: string, emailDate: string): FlightData[] {
   const flights: FlightData[] = [];
+
+  // Helper: extract year from email date header for dates without year
+  function getYearFromEmailDate(): string {
+    if (!emailDate) return new Date().getFullYear().toString();
+    const yearMatch = emailDate.match(/\b(20\d{2})\b/);
+    return yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+  }
+  const inferredYear = getYearFromEmailDate();
 
   // 1. Find booking reference
   let bookingRef = '';
@@ -319,15 +328,21 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
         if (/^\d{4}/.test(m0) && match[1] && match[2] && match[3]) {
           // YYYY-MM-DD
           dateStr = `${match[3]}/${match[2]}/${match[1]}`;
-        } else if (/[a-zа-я]/i.test(m0) && match[1] && match[2] && match[3]) {
-          // Month name format (e.g., "Wed, 04 Sep 24" or "25 March 2024")
+        } else if (/[a-zа-я]/i.test(m0) && match[1] && match[2]) {
+          // Month name format (e.g., "Wed, 04 Sep 24" or "25 March 2024" or "Sun 09 Jun" - no year)
           const day = String(match[1]).padStart(2, '0');
           const monthStr = String(match[2]).toLowerCase();
           const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
-          // Handle 2-digit year: 24 -> 2024
-          let year = String(match[3]);
-          if (year.length === 2) {
-            year = '20' + year;
+          // Handle year: may be 2-digit (24 -> 2024), 4-digit, or missing (infer from email date)
+          let year: string;
+          if (match[3]) {
+            year = String(match[3]);
+            if (year.length === 2) {
+              year = '20' + year;
+            }
+          } else {
+            // No year in date - infer from email date
+            year = inferredYear;
           }
           dateStr = `${day}/${month}/${year}`;
         } else if (m0) {
@@ -373,12 +388,19 @@ function parseWithRegex(text: string, emailDate: string): FlightData[] {
           if (/^\d{4}/.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
             parsedDate = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
             dayMonth = `${String(dateMatch[3]).padStart(2, '0')}/${dateMatch[2]}`;
-          } else if (/[a-zа-я]/i.test(m0) && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
+          } else if (/[a-zа-я]/i.test(m0) && dateMatch[1] && dateMatch[2]) {
+            // Month name format - with or without year
             const day = String(dateMatch[1]).padStart(2, '0');
             const monthStr = String(dateMatch[2]).toLowerCase();
             const month = MONTH_TO_NUM[monthStr] || MONTH_TO_NUM[monthStr.substring(0, 3)] || '01';
-            let year = String(dateMatch[3]);
-            if (year.length === 2) year = '20' + year;
+            let year: string;
+            if (dateMatch[3]) {
+              year = String(dateMatch[3]);
+              if (year.length === 2) year = '20' + year;
+            } else {
+              // No year - infer from email date
+              year = inferredYear;
+            }
             parsedDate = `${day}/${month}/${year}`;
             dayMonth = `${day}/${month}`;
           } else if (/^\d{1,2}[\/\-\.]/.test(m0)) {
