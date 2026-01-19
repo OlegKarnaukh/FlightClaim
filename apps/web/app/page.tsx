@@ -1,7 +1,6 @@
 'use client';
 
-import { signIn, signOut, useSession } from 'next-auth/react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 
 interface Flight {
   id: string;
@@ -19,26 +18,9 @@ interface Flight {
 }
 
 export default function Home() {
-  const { data: session, status } = useSession();
   const [flights, setFlights] = useState<Flight[]>([]);
-  const [tempFlights, setTempFlights] = useState<Flight[]>([]); // For non-authenticated users
   const [uploading, setUploading] = useState(false);
   const [checking, setChecking] = useState<string | null>(null);
-
-  const loadFlights = useCallback(async () => {
-    if (!session?.user) return;
-    const res = await fetch('/api/flights');
-    const data = await res.json();
-    if (data.flights) setFlights(data.flights);
-  }, [session]);
-
-  useEffect(() => {
-    if (session?.user) {
-      loadFlights();
-      // If user just logged in with temp flights, they're already saved via extract API
-      setTempFlights([]);
-    }
-  }, [session, loadFlights]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -61,13 +43,7 @@ export default function Home() {
       const data = await res.json();
 
       if (res.ok && data.flight) {
-        if (data.saved) {
-          // User is authenticated, reload from DB
-          loadFlights();
-        } else {
-          // Not authenticated, store temporarily
-          setTempFlights(prev => [data.flight, ...prev]);
-        }
+        setFlights(prev => [data.flight, ...prev]);
       } else {
         alert(data.error || 'Failed to extract flight data');
       }
@@ -80,39 +56,43 @@ export default function Home() {
   };
 
   const checkFlight = async (id: string) => {
-    if (!session?.user) {
-      signIn('google');
-      return;
-    }
+    const flight = flights.find(f => f.id === id);
+    if (!flight) return;
 
     setChecking(id);
+    setFlights(prev => prev.map(f => f.id === id ? { ...f, status: 'CHECKING' } : f));
+
     try {
-      await fetch(`/api/flights/${id}/check`, { method: 'POST' });
-      loadFlights();
+      const res = await fetch('/api/flights/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          flightNumber: flight.flightNumber,
+          date: flight.date,
+        }),
+      });
+
+      const data = await res.json();
+
+      setFlights(prev => prev.map(f => f.id === id ? {
+        ...f,
+        status: data.status || 'ERROR',
+        delayMinutes: data.delayMinutes,
+        compensation: data.compensation,
+        departureCity: data.departureCity || f.departureCity,
+        arrivalCity: data.arrivalCity || f.arrivalCity,
+      } : f));
+    } catch {
+      setFlights(prev => prev.map(f => f.id === id ? { ...f, status: 'ERROR' } : f));
     } finally {
       setChecking(null);
     }
   };
 
-  const allFlights = session?.user ? flights : tempFlights;
-  const isLoading = status === 'loading';
-
   return (
     <div style={styles.page}>
       <header style={styles.header}>
         <div style={styles.logo}>FlightClaim</div>
-        {session?.user ? (
-          <div style={styles.headerRight}>
-            <span style={styles.userName}>{session.user.name}</span>
-            <button style={styles.signOutBtn} onClick={() => signOut()}>
-              Выйти
-            </button>
-          </div>
-        ) : (
-          <button style={styles.signInBtn} onClick={() => signIn('google')}>
-            Войти
-          </button>
-        )}
       </header>
 
       <main style={styles.main}>
@@ -136,23 +116,22 @@ export default function Home() {
               type="file"
               accept="image/*,.pdf"
               onChange={handleFileUpload}
-              disabled={uploading || isLoading}
+              disabled={uploading}
               style={{ display: 'none' }}
             />
           </label>
         </div>
 
-        {allFlights.length > 0 && (
+        {flights.length > 0 && (
           <>
             <h2 style={styles.sectionTitle}>Ваши рейсы</h2>
             <div style={styles.grid}>
-              {allFlights.map((flight) => (
+              {flights.map((flight) => (
                 <FlightCard
                   key={flight.id}
                   flight={flight}
                   onCheck={() => checkFlight(flight.id)}
                   isChecking={checking === flight.id}
-                  isAuthenticated={!!session?.user}
                 />
               ))}
             </div>
@@ -167,12 +146,10 @@ function FlightCard({
   flight,
   onCheck,
   isChecking,
-  isAuthenticated,
 }: {
   flight: Flight;
   onCheck: () => void;
   isChecking: boolean;
-  isAuthenticated: boolean;
 }) {
   const statusText: Record<string, string> = {
     PENDING: 'Требуется проверка',
@@ -225,19 +202,33 @@ function FlightCard({
       </div>
 
       {flight.status === 'PENDING' && (
-        <button
-          style={styles.checkBtn}
-          onClick={onCheck}
-          disabled={isChecking}
-        >
-          {isChecking ? 'Проверка...' : isAuthenticated ? 'Проверить статус рейса' : 'Войти и проверить статус'}
+        <button style={styles.checkBtn} onClick={onCheck} disabled={isChecking}>
+          Проверить статус рейса
         </button>
       )}
 
-      {flight.status === 'ELIGIBLE' && flight.delayMinutes && (
-        <div style={styles.delayInfo}>
-          Задержка: {Math.floor(flight.delayMinutes / 60)}ч {flight.delayMinutes % 60}мин
+      {flight.status === 'CHECKING' && (
+        <button style={{ ...styles.checkBtn, opacity: 0.7 }} disabled>
+          Проверка...
+        </button>
+      )}
+
+      {flight.status === 'ELIGIBLE' && flight.delayMinutes !== null && (
+        <div style={styles.successInfo}>
+          Задержка: {Math.floor(flight.delayMinutes / 60)}ч {flight.delayMinutes % 60}мин — вы можете получить €{flight.compensation}!
         </div>
+      )}
+
+      {flight.status === 'NOT_ELIGIBLE' && (
+        <div style={styles.noCompensation}>
+          Рейс прибыл вовремя или задержка менее 3 часов
+        </div>
+      )}
+
+      {flight.status === 'ERROR' && (
+        <button style={styles.checkBtn} onClick={onCheck}>
+          Попробовать снова
+        </button>
       )}
     </div>
   );
@@ -255,37 +246,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     background: 'white',
     borderBottom: '1px solid #e5e7eb',
   },
-  headerRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 16,
-  },
   logo: {
     fontSize: 24,
     fontWeight: 700,
     color: '#2563eb',
-  },
-  userName: {
-    color: '#6b7280',
-    fontSize: 14,
-  },
-  signOutBtn: {
-    background: 'none',
-    border: '1px solid #e5e7eb',
-    padding: '8px 16px',
-    borderRadius: 8,
-    cursor: 'pointer',
-    fontSize: 14,
-  },
-  signInBtn: {
-    background: '#2563eb',
-    color: 'white',
-    border: 'none',
-    padding: '8px 20px',
-    borderRadius: 8,
-    cursor: 'pointer',
-    fontSize: 14,
-    fontWeight: 500,
   },
   main: {
     maxWidth: 900,
@@ -402,11 +366,20 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: 14,
     fontWeight: 500,
   },
-  delayInfo: {
-    background: '#fef3c7',
-    color: '#92400e',
-    padding: '8px 12px',
-    borderRadius: 6,
+  successInfo: {
+    background: '#d1fae5',
+    color: '#065f46',
+    padding: '12px',
+    borderRadius: 8,
+    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: 500,
+  },
+  noCompensation: {
+    background: '#f3f4f6',
+    color: '#6b7280',
+    padding: '12px',
+    borderRadius: 8,
     fontSize: 13,
     textAlign: 'center',
   },

@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
 import OpenAI from 'openai';
-import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -51,42 +48,27 @@ If any field is not found, use null. For date, extract the departure date.`,
       return NextResponse.json({ error: 'Failed to extract data' }, { status: 500 });
     }
 
-    // Parse JSON from response
     const data = JSON.parse(content);
 
     if (!data.flightNumber || !data.date) {
       return NextResponse.json({ error: 'Could not extract flight number or date' }, { status: 400 });
     }
 
-    // If user is authenticated, save to database
-    const session = await getServerSession(authOptions);
-    if (session?.user?.id) {
-      const flight = await prisma.flight.create({
-        data: {
-          userId: session.user.id,
-          flightNumber: data.flightNumber,
-          airline: data.airline,
-          departureAirport: data.departureAirport || 'N/A',
-          arrivalAirport: data.arrivalAirport || 'N/A',
-          departureCity: data.departureCity,
-          arrivalCity: data.arrivalCity,
-          date: new Date(data.date),
-          pnr: data.pnr,
-        },
-      });
-      return NextResponse.json({ flight, saved: true });
-    }
-
-    // Return extracted data without saving
     return NextResponse.json({
       flight: {
-        id: 'temp-' + Date.now(),
-        ...data,
+        id: 'flight-' + Date.now(),
+        flightNumber: data.flightNumber,
+        airline: data.airline,
         departureAirport: data.departureAirport || 'N/A',
         arrivalAirport: data.arrivalAirport || 'N/A',
+        departureCity: data.departureCity,
+        arrivalCity: data.arrivalCity,
+        date: data.date,
+        pnr: data.pnr,
         status: 'PENDING',
+        delayMinutes: null,
+        compensation: null,
       },
-      saved: false,
     });
   } catch (error) {
     console.error('Extract error:', error);
