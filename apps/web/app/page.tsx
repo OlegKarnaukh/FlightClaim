@@ -20,13 +20,10 @@ interface Flight {
 export default function Home() {
   const [flights, setFlights] = useState<Flight[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [checking, setChecking] = useState<string | null>(null);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
+  const processFile = async (file: File): Promise<Flight | null> => {
     try {
       const base64 = await new Promise<string>((resolve) => {
         const reader = new FileReader();
@@ -41,18 +38,40 @@ export default function Home() {
       });
 
       const data = await res.json();
-
-      if (res.ok && data.flight) {
-        setFlights(prev => [data.flight, ...prev]);
-      } else {
-        alert(data.error || 'Failed to extract flight data');
-      }
+      return res.ok && data.flight ? data.flight : null;
     } catch {
-      alert('Failed to upload file');
-    } finally {
-      setUploading(false);
-      e.target.value = '';
+      return null;
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    setUploadProgress({ current: 0, total: files.length });
+
+    const newFlights: Flight[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      setUploadProgress({ current: i + 1, total: files.length });
+      const flight = await processFile(files[i]);
+      if (flight) {
+        newFlights.push(flight);
+      }
+    }
+
+    if (newFlights.length > 0) {
+      setFlights(prev => [...newFlights, ...prev]);
+    }
+
+    if (newFlights.length < files.length) {
+      alert(`Обработано ${newFlights.length} из ${files.length} файлов`);
+    }
+
+    setUploading(false);
+    setUploadProgress({ current: 0, total: 0 });
+    e.target.value = '';
   };
 
   const checkFlight = async (id: string) => {
@@ -89,6 +108,15 @@ export default function Home() {
     }
   };
 
+  const checkAllFlights = async () => {
+    const pendingFlights = flights.filter(f => f.status === 'PENDING');
+    for (const flight of pendingFlights) {
+      await checkFlight(flight.id);
+    }
+  };
+
+  const pendingCount = flights.filter(f => f.status === 'PENDING').length;
+
   return (
     <div style={styles.page}>
       <header style={styles.header}>
@@ -111,12 +139,15 @@ export default function Home() {
             Загрузите PDF, скриншот или фото подтверждения бронирования авиабилета
           </p>
           <label style={styles.uploadBtn}>
-            {uploading ? 'Обработка...' : 'Выберите файл'}
+            {uploading
+              ? `Обработка ${uploadProgress.current}/${uploadProgress.total}...`
+              : 'Выберите файлы'}
             <input
               type="file"
               accept="image/*,.pdf"
               onChange={handleFileUpload}
               disabled={uploading}
+              multiple
               style={{ display: 'none' }}
             />
           </label>
@@ -124,7 +155,18 @@ export default function Home() {
 
         {flights.length > 0 && (
           <>
-            <h2 style={styles.sectionTitle}>Ваши рейсы</h2>
+            <div style={styles.sectionHeader}>
+              <h2 style={styles.sectionTitle}>Ваши рейсы</h2>
+              {pendingCount > 0 && (
+                <button
+                  style={styles.checkAllBtn}
+                  onClick={checkAllFlights}
+                  disabled={!!checking}
+                >
+                  Проверить все ({pendingCount})
+                </button>
+              )}
+            </div>
             <div style={styles.grid}>
               {flights.map((flight) => (
                 <FlightCard
@@ -297,10 +339,26 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: 'pointer',
     fontSize: 14,
   },
+  sectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 600,
-    marginBottom: 16,
+    margin: 0,
+  },
+  checkAllBtn: {
+    background: '#10b981',
+    color: 'white',
+    border: 'none',
+    padding: '8px 16px',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontSize: 14,
+    fontWeight: 500,
   },
   grid: {
     display: 'grid',
