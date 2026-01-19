@@ -10,8 +10,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 });
     }
 
-    const currentYear = new Date().getFullYear();
-    const fileDateHint = fileDate ? `\nFile/screenshot was created on: ${fileDate}. The flight date is likely close to this date (same year or shortly after).` : '';
+    // Use file date to determine likely year range
+    const fileYear = fileDate ? new Date(fileDate).getFullYear() : 2025;
+    const yearHint = fileDate
+      ? `The file was created on ${fileDate}. The flight date should be in ${fileYear - 1}, ${fileYear}, or ${fileYear + 1}.`
+      : `The flight is likely from 2024 or 2025.`;
 
     // Extract flight data using GPT-4o-mini
     const response = await openai.chat.completions.create({
@@ -23,7 +26,8 @@ export async function POST(req: NextRequest) {
             {
               type: 'text',
               text: `Extract flight information from this boarding pass or booking confirmation.
-Current year is ${currentYear}.${fileDateHint}
+
+${yearHint}
 
 Return JSON only, no markdown:
 {
@@ -39,8 +43,9 @@ Return JSON only, no markdown:
 
 Important:
 - For date, use full 4-digit year (YYYY-MM-DD format)
+- If year is not visible, use the file creation date as reference
+- NEVER use year 2026 - flights are from 2024 or 2025
 - Extract full city names, not just airport codes
-- Use the file date as a hint if year is not visible in the image
 - If any field is not found, use null`,
             },
             {
@@ -64,6 +69,17 @@ Important:
       return NextResponse.json({ error: 'Could not extract flight number or date' }, { status: 400 });
     }
 
+    // Validate and fix year if needed
+    let extractedDate = data.date;
+    const extractedYear = parseInt(extractedDate.substring(0, 4));
+
+    // If year is 2026 or later, adjust to file year or 2025
+    if (extractedYear >= 2026) {
+      const correctedYear = fileYear <= 2025 ? fileYear : 2025;
+      extractedDate = correctedYear + extractedDate.substring(4);
+      console.log(`Corrected year from ${extractedYear} to ${correctedYear}: ${extractedDate}`);
+    }
+
     return NextResponse.json({
       flight: {
         id: 'flight-' + Date.now(),
@@ -73,7 +89,7 @@ Important:
         arrivalAirport: data.arrivalAirport || 'N/A',
         departureCity: data.departureCity,
         arrivalCity: data.arrivalCity,
-        date: data.date,
+        date: extractedDate,
         pnr: data.pnr,
         status: 'PENDING',
         delayMinutes: null,

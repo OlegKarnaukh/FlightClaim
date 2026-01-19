@@ -63,6 +63,10 @@ export default function Home() {
       if (flight) {
         newFlights.push(flight);
       }
+      // Add small delay between uploads to avoid overloading the API
+      if (i < files.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
 
     if (newFlights.length > 0) {
@@ -115,8 +119,12 @@ export default function Home() {
 
   const checkAllFlights = async () => {
     const pendingFlights = flights.filter(f => f.status === 'PENDING');
-    for (const flight of pendingFlights) {
-      await checkFlight(flight.id);
+    for (let i = 0; i < pendingFlights.length; i++) {
+      await checkFlight(pendingFlights[i].id);
+      // Add delay between requests to avoid rate limiting (429)
+      if (i < pendingFlights.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
     }
   };
 
