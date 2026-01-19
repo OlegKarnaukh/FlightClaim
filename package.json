@@ -1,0 +1,22 @@
+{
+  "name": "flightclaim",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "clean": "turbo clean",
+    "dev:web": "turbo dev --filter=web",
+    "dev:mobile": "turbo dev --filter=mobile",
+    "build:web": "turbo build --filter=web"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.3.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20"
+  }
+}
