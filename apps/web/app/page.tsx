@@ -32,10 +32,13 @@ export default function Home() {
         reader.readAsDataURL(file);
       });
 
+      // Get file date as hint for year detection
+      const fileDate = file.lastModified ? new Date(file.lastModified).toISOString().split('T')[0] : null;
+
       const res = await fetch('/api/flights/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64 }),
+        body: JSON.stringify({ image: base64, fileDate }),
       });
 
       const data = await res.json();

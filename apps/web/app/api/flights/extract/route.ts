@@ -5,12 +5,13 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
-    const { image } = await req.json();
+    const { image, fileDate } = await req.json();
     if (!image) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 });
     }
 
     const currentYear = new Date().getFullYear();
+    const fileDateHint = fileDate ? `\nFile/screenshot was created on: ${fileDate}. The flight date is likely close to this date (same year or shortly after).` : '';
 
     // Extract flight data using GPT-4o-mini
     const response = await openai.chat.completions.create({
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
             {
               type: 'text',
               text: `Extract flight information from this boarding pass or booking confirmation.
-Current year is ${currentYear}. If year is not explicitly shown, assume it's within the last 3 years (${currentYear-2}-${currentYear}).
+Current year is ${currentYear}.${fileDateHint}
 
 Return JSON only, no markdown:
 {
@@ -39,7 +40,7 @@ Return JSON only, no markdown:
 Important:
 - For date, use full 4-digit year (YYYY-MM-DD format)
 - Extract full city names, not just airport codes
-- If year is ambiguous, prefer the most recent year that makes sense
+- Use the file date as a hint if year is not visible in the image
 - If any field is not found, use null`,
             },
             {
