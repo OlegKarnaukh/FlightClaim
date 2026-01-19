@@ -3,6 +3,18 @@ import { NextRequest, NextResponse } from 'next/server';
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 const RAPIDAPI_HOST = 'aerodatabox.p.rapidapi.com';
 
+// Normalize flight numbers (EJU/EZY → U2 for EasyJet, etc.)
+function normalizeFlightNumber(flightNumber: string): string {
+  const num = flightNumber.toUpperCase().replace(/\s+/g, '');
+
+  // EasyJet uses U2, but often appears as EJU or EZY
+  if (num.startsWith('EJU') || num.startsWith('EZY')) {
+    return 'U2' + num.slice(3);
+  }
+
+  return num;
+}
+
 // EU261 compensation calculation
 function calculateCompensation(distanceKm: number, delayMinutes: number): { eligible: boolean; amount: number } {
   if (delayMinutes < 180) return { eligible: false, amount: 0 };
@@ -28,11 +40,14 @@ export async function POST(req: NextRequest) {
     const { flightNumber, date } = await req.json();
 
     if (!flightNumber || !date) {
-      return NextResponse.json({ error: 'Flight number and date required' }, { status: 400 });
+      return NextResponse.json({ error: 'Flight number and date required', status: 'ERROR' }, { status: 400 });
     }
 
+    const normalizedFlight = normalizeFlightNumber(flightNumber);
     const dateStr = new Date(date).toISOString().split('T')[0];
-    const url = `https://${RAPIDAPI_HOST}/flights/number/${flightNumber}/${dateStr}`;
+    const url = `https://${RAPIDAPI_HOST}/flights/number/${normalizedFlight}/${dateStr}`;
+
+    console.log(`Checking flight: ${normalizedFlight} on ${dateStr}`);
 
     const response = await fetch(url, {
       headers: {
@@ -41,26 +56,42 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    console.log(`AeroDataBox response: ${response.status}`);
+
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`AeroDataBox API error: ${response.status} - ${errorText}`);
       return NextResponse.json({
-        error: `AeroDataBox API error: ${response.status}`,
+        error: `Не удалось получить данные о рейсе (${response.status})`,
         status: 'ERROR'
-      }, { status: 500 });
+      });
     }
 
     const data = await response.json();
+    console.log(`AeroDataBox data:`, JSON.stringify(data).slice(0, 500));
+
     const flightData = Array.isArray(data) ? data[0] : data;
 
     if (!flightData) {
       return NextResponse.json({
-        message: 'Flight not found in database',
+        error: 'Рейс не найден в базе данных',
         status: 'ERROR'
       });
     }
 
     // Calculate delay
-    const scheduled = new Date(flightData.arrival?.scheduledTime?.utc || flightData.arrival?.scheduledTimeUtc);
-    const actual = new Date(flightData.arrival?.actualTime?.utc || flightData.arrival?.actualTimeUtc || scheduled);
+    const scheduledTime = flightData.arrival?.scheduledTime?.utc || flightData.arrival?.scheduledTimeUtc;
+    const actualTime = flightData.arrival?.actualTime?.utc || flightData.arrival?.actualTimeUtc;
+
+    if (!scheduledTime) {
+      return NextResponse.json({
+        error: 'Нет данных о времени прибытия',
+        status: 'ERROR'
+      });
+    }
+
+    const scheduled = new Date(scheduledTime);
+    const actual = actualTime ? new Date(actualTime) : scheduled;
     const delayMinutes = Math.max(0, Math.floor((actual.getTime() - scheduled.getTime()) / 60000));
 
     // Get distance
@@ -84,6 +115,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('Check flight error:', error);
-    return NextResponse.json({ error: 'Failed to check flight', status: 'ERROR' }, { status: 500 });
+    return NextResponse.json({
+      error: 'Ошибка при проверке рейса',
+      status: 'ERROR'
+    });
   }
 }

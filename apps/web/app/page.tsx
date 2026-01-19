@@ -15,6 +15,7 @@ interface Flight {
   status: 'PENDING' | 'CHECKING' | 'ELIGIBLE' | 'NOT_ELIGIBLE' | 'ERROR';
   delayMinutes: number | null;
   compensation: number | null;
+  errorMessage?: string;
 }
 
 export default function Home() {
@@ -100,9 +101,10 @@ export default function Home() {
         compensation: data.compensation,
         departureCity: data.departureCity || f.departureCity,
         arrivalCity: data.arrivalCity || f.arrivalCity,
+        errorMessage: data.error,
       } : f));
     } catch {
-      setFlights(prev => prev.map(f => f.id === id ? { ...f, status: 'ERROR' } : f));
+      setFlights(prev => prev.map(f => f.id === id ? { ...f, status: 'ERROR', errorMessage: 'Ошибка сети' } : f));
     } finally {
       setChecking(null);
     }
@@ -268,9 +270,14 @@ function FlightCard({
       )}
 
       {flight.status === 'ERROR' && (
-        <button style={styles.checkBtn} onClick={onCheck}>
-          Попробовать снова
-        </button>
+        <div>
+          {flight.errorMessage && (
+            <div style={styles.errorMessage}>{flight.errorMessage}</div>
+          )}
+          <button style={styles.checkBtn} onClick={onCheck}>
+            Попробовать снова
+          </button>
+        </div>
       )}
     </div>
   );
@@ -439,6 +446,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '12px',
     borderRadius: 8,
     fontSize: 13,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    background: '#fef2f2',
+    color: '#dc2626',
+    padding: '8px 12px',
+    borderRadius: 6,
+    fontSize: 13,
+    marginBottom: 8,
     textAlign: 'center',
   },
 };
