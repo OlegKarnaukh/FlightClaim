@@ -21,17 +21,23 @@ interface Flight {
 export default function Home() {
   const { data: session, status } = useSession();
   const [flights, setFlights] = useState<Flight[]>([]);
+  const [tempFlights, setTempFlights] = useState<Flight[]>([]); // For non-authenticated users
   const [uploading, setUploading] = useState(false);
   const [checking, setChecking] = useState<string | null>(null);
 
   const loadFlights = useCallback(async () => {
+    if (!session?.user) return;
     const res = await fetch('/api/flights');
     const data = await res.json();
     if (data.flights) setFlights(data.flights);
-  }, []);
+  }, [session]);
 
   useEffect(() => {
-    if (session?.user) loadFlights();
+    if (session?.user) {
+      loadFlights();
+      // If user just logged in with temp flights, they're already saved via extract API
+      setTempFlights([]);
+    }
   }, [session, loadFlights]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,10 +58,17 @@ export default function Home() {
         body: JSON.stringify({ image: base64 }),
       });
 
-      if (res.ok) {
-        loadFlights();
+      const data = await res.json();
+
+      if (res.ok && data.flight) {
+        if (data.saved) {
+          // User is authenticated, reload from DB
+          loadFlights();
+        } else {
+          // Not authenticated, store temporarily
+          setTempFlights(prev => [data.flight, ...prev]);
+        }
       } else {
-        const data = await res.json();
         alert(data.error || 'Failed to extract flight data');
       }
     } catch {
@@ -67,6 +80,11 @@ export default function Home() {
   };
 
   const checkFlight = async (id: string) => {
+    if (!session?.user) {
+      signIn('google');
+      return;
+    }
+
     setChecking(id);
     try {
       await fetch(`/api/flights/${id}/check`, { method: 'POST' });
@@ -76,39 +94,25 @@ export default function Home() {
     }
   };
 
-  if (status === 'loading') {
-    return (
-      <div style={styles.center}>
-        <div style={styles.logo}>FlightClaim</div>
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
-  if (!session) {
-    return (
-      <div style={styles.center}>
-        <div style={styles.logo}>FlightClaim</div>
-        <p style={styles.tagline}>
-          Автоматическая проверка задержек рейсов и оформление компенсаций по EU261
-        </p>
-        <button style={styles.googleBtn} onClick={() => signIn('google')}>
-          Sign in with Google
-        </button>
-      </div>
-    );
-  }
+  const allFlights = session?.user ? flights : tempFlights;
+  const isLoading = status === 'loading';
 
   return (
     <div style={styles.page}>
       <header style={styles.header}>
         <div style={styles.logo}>FlightClaim</div>
-        <div style={styles.headerRight}>
-          <span style={styles.userName}>{session.user?.name}</span>
-          <button style={styles.signOutBtn} onClick={() => signOut()}>
-            Sign Out
+        {session?.user ? (
+          <div style={styles.headerRight}>
+            <span style={styles.userName}>{session.user.name}</span>
+            <button style={styles.signOutBtn} onClick={() => signOut()}>
+              Выйти
+            </button>
+          </div>
+        ) : (
+          <button style={styles.signInBtn} onClick={() => signIn('google')}>
+            Войти
           </button>
-        </div>
+        )}
       </header>
 
       <main style={styles.main}>
@@ -132,22 +136,23 @@ export default function Home() {
               type="file"
               accept="image/*,.pdf"
               onChange={handleFileUpload}
-              disabled={uploading}
+              disabled={uploading || isLoading}
               style={{ display: 'none' }}
             />
           </label>
         </div>
 
-        {flights.length > 0 && (
+        {allFlights.length > 0 && (
           <>
             <h2 style={styles.sectionTitle}>Ваши рейсы</h2>
             <div style={styles.grid}>
-              {flights.map((flight) => (
+              {allFlights.map((flight) => (
                 <FlightCard
                   key={flight.id}
                   flight={flight}
                   onCheck={() => checkFlight(flight.id)}
                   isChecking={checking === flight.id}
+                  isAuthenticated={!!session?.user}
                 />
               ))}
             </div>
@@ -162,10 +167,12 @@ function FlightCard({
   flight,
   onCheck,
   isChecking,
+  isAuthenticated,
 }: {
   flight: Flight;
   onCheck: () => void;
   isChecking: boolean;
+  isAuthenticated: boolean;
 }) {
   const statusText: Record<string, string> = {
     PENDING: 'Требуется проверка',
@@ -223,7 +230,7 @@ function FlightCard({
           onClick={onCheck}
           disabled={isChecking}
         >
-          {isChecking ? 'Проверка...' : 'Проверить статус рейса'}
+          {isChecking ? 'Проверка...' : isAuthenticated ? 'Проверить статус рейса' : 'Войти и проверить статус'}
         </button>
       )}
 
@@ -237,15 +244,6 @@ function FlightCard({
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
-  center: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '100vh',
-    padding: 20,
-    textAlign: 'center',
-  },
   page: {
     minHeight: '100vh',
   },
@@ -278,6 +276,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: 8,
     cursor: 'pointer',
     fontSize: 14,
+  },
+  signInBtn: {
+    background: '#2563eb',
+    color: 'white',
+    border: 'none',
+    padding: '8px 20px',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontSize: 14,
+    fontWeight: 500,
   },
   main: {
     maxWidth: 900,
@@ -401,15 +409,5 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: 6,
     fontSize: 13,
     textAlign: 'center',
-  },
-  googleBtn: {
-    background: 'white',
-    border: '1px solid #e5e7eb',
-    padding: '12px 24px',
-    borderRadius: 8,
-    cursor: 'pointer',
-    fontSize: 16,
-    fontWeight: 500,
-    marginTop: 24,
   },
 };

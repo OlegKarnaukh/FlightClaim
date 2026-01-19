@@ -7,11 +7,6 @@ import { prisma } from '@/lib/prisma';
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   try {
     const { image } = await req.json();
     if (!image) {
@@ -63,22 +58,36 @@ If any field is not found, use null. For date, extract the departure date.`,
       return NextResponse.json({ error: 'Could not extract flight number or date' }, { status: 400 });
     }
 
-    // Save to database
-    const flight = await prisma.flight.create({
-      data: {
-        userId: session.user.id,
-        flightNumber: data.flightNumber,
-        airline: data.airline,
+    // If user is authenticated, save to database
+    const session = await getServerSession(authOptions);
+    if (session?.user?.id) {
+      const flight = await prisma.flight.create({
+        data: {
+          userId: session.user.id,
+          flightNumber: data.flightNumber,
+          airline: data.airline,
+          departureAirport: data.departureAirport || 'N/A',
+          arrivalAirport: data.arrivalAirport || 'N/A',
+          departureCity: data.departureCity,
+          arrivalCity: data.arrivalCity,
+          date: new Date(data.date),
+          pnr: data.pnr,
+        },
+      });
+      return NextResponse.json({ flight, saved: true });
+    }
+
+    // Return extracted data without saving
+    return NextResponse.json({
+      flight: {
+        id: 'temp-' + Date.now(),
+        ...data,
         departureAirport: data.departureAirport || 'N/A',
         arrivalAirport: data.arrivalAirport || 'N/A',
-        departureCity: data.departureCity,
-        arrivalCity: data.arrivalCity,
-        date: new Date(data.date),
-        pnr: data.pnr,
+        status: 'PENDING',
       },
+      saved: false,
     });
-
-    return NextResponse.json({ flight });
   } catch (error) {
     console.error('Extract error:', error);
     return NextResponse.json({ error: 'Failed to process image' }, { status: 500 });
