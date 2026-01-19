@@ -10,6 +10,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 });
     }
 
+    const currentYear = new Date().getFullYear();
+
     // Extract flight data using GPT-4o-mini
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -20,18 +22,25 @@ export async function POST(req: NextRequest) {
             {
               type: 'text',
               text: `Extract flight information from this boarding pass or booking confirmation.
+Current year is ${currentYear}. If year is not explicitly shown, assume it's within the last 3 years (${currentYear-2}-${currentYear}).
+
 Return JSON only, no markdown:
 {
   "flightNumber": "XX1234",
   "airline": "Airline Name",
   "departureAirport": "XXX",
   "arrivalAirport": "XXX",
-  "departureCity": "City Name",
-  "arrivalCity": "City Name",
+  "departureCity": "Full City Name",
+  "arrivalCity": "Full City Name",
   "date": "YYYY-MM-DD",
   "pnr": "ABC123"
 }
-If any field is not found, use null. For date, extract the departure date.`,
+
+Important:
+- For date, use full 4-digit year (YYYY-MM-DD format)
+- Extract full city names, not just airport codes
+- If year is ambiguous, prefer the most recent year that makes sense
+- If any field is not found, use null`,
             },
             {
               type: 'image_url',

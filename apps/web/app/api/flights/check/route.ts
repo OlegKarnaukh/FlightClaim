@@ -61,6 +61,22 @@ export async function POST(req: NextRequest) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`AeroDataBox API error: ${response.status} - ${errorText}`);
+
+      // Check if flight is too old (AeroDataBox only stores 1 year)
+      if (response.status === 400 && errorText.includes('365 day')) {
+        return NextResponse.json({
+          error: 'Рейс старше 1 года — автоматическая проверка недоступна',
+          status: 'ERROR'
+        });
+      }
+
+      if (response.status === 404) {
+        return NextResponse.json({
+          error: 'Рейс не найден в базе данных',
+          status: 'ERROR'
+        });
+      }
+
       return NextResponse.json({
         error: `Не удалось получить данные о рейсе (${response.status})`,
         status: 'ERROR'
