@@ -10,11 +10,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 });
     }
 
-    // Use file date to determine likely year range
-    const fileYear = fileDate ? new Date(fileDate).getFullYear() : 2025;
-    const yearHint = fileDate
-      ? `The file was created on ${fileDate}. The flight date should be in ${fileYear - 1}, ${fileYear}, or ${fileYear + 1}.`
-      : `The flight is likely from 2024 or 2025.`;
+    // Use file date only if it's from 2024 or 2025 (ignore 2026+ as it's likely just copy date)
+    const fileYear = fileDate ? new Date(fileDate).getFullYear() : null;
+    const isFileYearUseful = fileYear && fileYear >= 2024 && fileYear <= 2025;
+
+    const yearHint = isFileYearUseful
+      ? `The file was created on ${fileDate}. The flight is likely from ${fileYear}.`
+      : `The flight is from 2024 or 2025. NEVER use 2026.`;
 
     // Extract flight data using GPT-4o-mini
     const response = await openai.chat.completions.create({
@@ -43,8 +45,8 @@ Return JSON only, no markdown:
 
 Important:
 - For date, use full 4-digit year (YYYY-MM-DD format)
-- If year is not visible, use the file creation date as reference
-- NEVER use year 2026 - flights are from 2024 or 2025
+- Year MUST be 2024 or 2025. NEVER use 2026 or any future year.
+- If year is not visible on the image, default to 2025
 - Extract full city names, not just airport codes
 - If any field is not found, use null`,
             },
@@ -69,13 +71,14 @@ Important:
       return NextResponse.json({ error: 'Could not extract flight number or date' }, { status: 400 });
     }
 
-    // Validate and fix year if needed
+    // Validate and fix year - MUST be 2024 or 2025
     let extractedDate = data.date;
     const extractedYear = parseInt(extractedDate.substring(0, 4));
 
-    // If year is 2026 or later, adjust to file year or 2025
-    if (extractedYear >= 2026) {
-      const correctedYear = fileYear <= 2025 ? fileYear : 2025;
+    // Force year to be 2024 or 2025
+    if (extractedYear < 2024 || extractedYear > 2025) {
+      // Default to 2025, or 2024 if file date suggests it
+      const correctedYear = isFileYearUseful ? fileYear : 2025;
       extractedDate = correctedYear + extractedDate.substring(4);
       console.log(`Corrected year from ${extractedYear} to ${correctedYear}: ${extractedDate}`);
     }
