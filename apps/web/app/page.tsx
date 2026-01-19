@@ -12,6 +12,7 @@ interface Flight {
   arrivalCity: string | null;
   date: string;
   pnr: string | null;
+  yearVisible: boolean;
   status: 'PENDING' | 'CHECKING' | 'ELIGIBLE' | 'NOT_ELIGIBLE' | 'ERROR';
   delayMinutes: number | null;
   compensation: number | null;
@@ -32,13 +33,10 @@ export default function Home() {
         reader.readAsDataURL(file);
       });
 
-      // Get file date as hint for year detection
-      const fileDate = file.lastModified ? new Date(file.lastModified).toISOString().split('T')[0] : null;
-
       const res = await fetch('/api/flights/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, fileDate }),
+        body: JSON.stringify({ image: base64 }),
       });
 
       const data = await res.json();
@@ -46,6 +44,10 @@ export default function Home() {
     } catch {
       return null;
     }
+  };
+
+  const updateFlightDate = (id: string, newDate: string) => {
+    setFlights(prev => prev.map(f => f.id === id ? { ...f, date: newDate, yearVisible: true } : f));
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -186,6 +188,7 @@ export default function Home() {
                   key={flight.id}
                   flight={flight}
                   onCheck={() => checkFlight(flight.id)}
+                  onUpdateDate={(newDate) => updateFlightDate(flight.id, newDate)}
                   isChecking={checking === flight.id}
                 />
               ))}
@@ -200,12 +203,17 @@ export default function Home() {
 function FlightCard({
   flight,
   onCheck,
+  onUpdateDate,
   isChecking,
 }: {
   flight: Flight;
   onCheck: () => void;
+  onUpdateDate: (newDate: string) => void;
   isChecking: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [editDate, setEditDate] = useState(flight.date);
+
   const statusText: Record<string, string> = {
     PENDING: 'Требуется проверка',
     CHECKING: 'Проверка...',
@@ -225,6 +233,11 @@ function FlightCard({
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+
+  const handleSaveDate = () => {
+    onUpdateDate(editDate);
+    setEditing(false);
   };
 
   return (
@@ -252,9 +265,36 @@ function FlightCard({
       </div>
 
       <div style={styles.meta}>
-        <span>{formatDate(flight.date)}</span>
+        {editing ? (
+          <div style={styles.dateEditor}>
+            <input
+              type="date"
+              value={editDate}
+              onChange={(e) => setEditDate(e.target.value)}
+              style={styles.dateInput}
+            />
+            <button onClick={handleSaveDate} style={styles.saveDateBtn}>OK</button>
+            <button onClick={() => setEditing(false)} style={styles.cancelDateBtn}>✕</button>
+          </div>
+        ) : (
+          <span
+            onClick={() => flight.status === 'PENDING' && setEditing(true)}
+            style={{ cursor: flight.status === 'PENDING' ? 'pointer' : 'default' }}
+          >
+            {formatDate(flight.date)}
+            {flight.status === 'PENDING' && !flight.yearVisible && (
+              <span style={styles.yearWarning}> ⚠️</span>
+            )}
+          </span>
+        )}
         {flight.pnr && <span>PNR: <strong>{flight.pnr}</strong></span>}
       </div>
+
+      {flight.status === 'PENDING' && !flight.yearVisible && !editing && (
+        <div style={styles.yearWarningBox}>
+          Год не виден на изображении. <button onClick={() => setEditing(true)} style={styles.editLink}>Проверьте дату</button>
+        </div>
+      )}
 
       {flight.status === 'PENDING' && (
         <button style={styles.checkBtn} onClick={onCheck} disabled={isChecking}>
@@ -467,5 +507,55 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: 13,
     marginBottom: 8,
     textAlign: 'center',
+  },
+  dateEditor: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+  },
+  dateInput: {
+    padding: '4px 8px',
+    border: '1px solid #d1d5db',
+    borderRadius: 4,
+    fontSize: 13,
+  },
+  saveDateBtn: {
+    padding: '4px 8px',
+    background: '#10b981',
+    color: 'white',
+    border: 'none',
+    borderRadius: 4,
+    cursor: 'pointer',
+    fontSize: 12,
+  },
+  cancelDateBtn: {
+    padding: '4px 8px',
+    background: '#e5e7eb',
+    color: '#374151',
+    border: 'none',
+    borderRadius: 4,
+    cursor: 'pointer',
+    fontSize: 12,
+  },
+  yearWarning: {
+    color: '#f59e0b',
+  },
+  yearWarningBox: {
+    background: '#fef3c7',
+    color: '#92400e',
+    padding: '8px 12px',
+    borderRadius: 6,
+    fontSize: 12,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  editLink: {
+    background: 'none',
+    border: 'none',
+    color: '#2563eb',
+    textDecoration: 'underline',
+    cursor: 'pointer',
+    padding: 0,
+    fontSize: 12,
   },
 };
