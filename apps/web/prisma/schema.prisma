@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  flights   Flight[]
+}
+
+model Flight {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Flight info
+  flightNumber     String
+  airline          String?
+  departureAirport String    // IATA code (e.g., "BCN")
+  arrivalAirport   String    // IATA code (e.g., "MXP")
+  departureCity    String?   // Full name (e.g., "Barcelona")
+  arrivalCity      String?   // Full name (e.g., "Milan")
+  date             DateTime
+  pnr              String?   // Booking reference
+
+  // Status (after check)
+  status           FlightStatus @default(PENDING)
+  delayMinutes     Int?
+  compensation     Int?      // EUR amount
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([flightNumber, date])
+}
+
+enum FlightStatus {
+  PENDING      // Not checked yet
+  CHECKING     // Currently checking
+  ELIGIBLE     // Eligible for compensation
+  NOT_ELIGIBLE // No delay or not covered
+  ERROR        // Check failed
+}
