@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
     // Generate PDF bytes
     const pdfBytes = await pdfDoc.save();
 
-    return new NextResponse(pdfBytes, {
+    return new NextResponse(Buffer.from(pdfBytes), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="claim-${flight.flightNumber}-${flight.date}.pdf"`,
