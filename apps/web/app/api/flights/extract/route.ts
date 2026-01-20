@@ -31,14 +31,18 @@ Return JSON only, no markdown:
   "arrivalCity": "Full City Name",
   "date": "YYYY-MM-DD",
   "pnr": "ABC123",
-  "yearVisible": true
+  "yearVisible": false
 }
 
-Important:
-- For date, use full 4-digit year (YYYY-MM-DD format)
-- yearVisible: set to TRUE only if a 4-digit year (like 2024, 2025) is clearly visible in the image
-- yearVisible: set to FALSE if only day and month are visible (like "25 MAY" or "25/05")
-- If year is not visible, make your best guess based on context but mark yearVisible as false
+CRITICAL for yearVisible:
+- Set yearVisible to TRUE ONLY if you can see "2024" or "2025" or "2026" (4-digit year) written in the image
+- Set yearVisible to FALSE if you see dates like "06 JUN", "06/06", "6 June", "06.06" without a 4-digit year
+- Set yearVisible to FALSE if the year is abbreviated like "24" or "25" - this is ambiguous!
+- When in doubt, set yearVisible to FALSE
+
+If yearVisible is FALSE, still provide your best guess for the date but the user will verify it.
+
+Other rules:
 - Extract full city names, not just airport codes
 - If any field is not found, use null`,
             },
