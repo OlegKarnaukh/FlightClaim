@@ -328,8 +328,13 @@ function FlightCard({
       )}
 
       {flight.status === 'ELIGIBLE' && flight.delayMinutes !== null && (
-        <div style={styles.successInfo}>
-          Задержка: {Math.floor(flight.delayMinutes / 60)}ч {flight.delayMinutes % 60}мин — вы можете получить €{flight.compensation}!
+        <div>
+          <div style={styles.successInfo}>
+            Задержка: {Math.floor(flight.delayMinutes / 60)}ч {flight.delayMinutes % 60}мин — вы можете получить €{flight.compensation}!
+          </div>
+          <button style={styles.claimBtn}>
+            Подать заявку на компенсацию
+          </button>
         </div>
       )}
 
@@ -517,6 +522,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: 14,
     textAlign: 'center',
     fontWeight: 500,
+  },
+  claimBtn: {
+    width: '100%',
+    background: '#10b981',
+    color: 'white',
+    border: 'none',
+    padding: '14px 16px',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontSize: 15,
+    fontWeight: 600,
+    marginTop: 12,
   },
   noCompensation: {
     background: '#f3f4f6',
