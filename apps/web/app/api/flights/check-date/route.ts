@@ -65,6 +65,16 @@ export async function GET(req: NextRequest) {
     // EU261 eligible if delay >= 180 minutes (3 hours)
     const eu261Eligible = delayMinutes !== null && delayMinutes >= 180;
 
+    // Also check departure delay
+    const scheduledDep = flightData.departure?.scheduledTime?.utc;
+    const actualDep = flightData.departure?.actualTime?.utc;
+    let depDelayMinutes: number | null = null;
+    if (scheduledDep && actualDep) {
+      depDelayMinutes = Math.floor(
+        (new Date(actualDep).getTime() - new Date(scheduledDep).getTime()) / 60000
+      );
+    }
+
     return NextResponse.json({
       flight,
       date,
@@ -72,14 +82,24 @@ export async function GET(req: NextRequest) {
       route: `${flightData.departure?.airport?.iata} → ${flightData.arrival?.airport?.iata}`,
       departureCity: flightData.departure?.airport?.name,
       arrivalCity: flightData.arrival?.airport?.name,
+      scheduledDeparture: scheduledDep,
+      actualDeparture: actualDep,
+      departureDelayMinutes: depDelayMinutes,
       scheduledArrival: scheduledTime,
       actualArrival: actualTime,
-      delayMinutes,
+      arrivalDelayMinutes: delayMinutes,
       delayFormatted: delayMinutes !== null
         ? `${Math.floor(delayMinutes / 60)}h ${delayMinutes % 60}m`
-        : 'N/A',
-      eu261Eligible,
+        : (depDelayMinutes !== null ? `dep: ${Math.floor(depDelayMinutes / 60)}h ${depDelayMinutes % 60}m` : 'N/A'),
+      eu261Eligible: eu261Eligible || (depDelayMinutes !== null && depDelayMinutes >= 180),
       status: flightData.status,
+      // Raw times for debugging
+      rawTimes: {
+        departure: flightData.departure?.scheduledTime,
+        arrival: flightData.arrival?.scheduledTime,
+        depActual: flightData.departure?.actualTime,
+        arrActual: flightData.arrival?.actualTime,
+      }
     });
 
   } catch (error) {
