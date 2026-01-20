@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 interface Flight {
@@ -21,6 +21,14 @@ interface Flight {
 }
 
 export default function Home() {
+  return (
+    <Suspense fallback={<div style={{ padding: 24, textAlign: 'center' }}>Загрузка...</div>}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+function HomeContent() {
   const [flights, setFlights] = useState<Flight[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
