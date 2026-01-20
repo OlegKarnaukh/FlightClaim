@@ -37,11 +37,14 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 export async function POST(req: NextRequest) {
   try {
-    const { flightNumber, date } = await req.json();
+    const { flightNumber, date, debugDelay } = await req.json();
 
     if (!flightNumber || !date) {
       return NextResponse.json({ error: 'Flight number and date required', status: 'ERROR' }, { status: 400 });
     }
+
+    // Debug mode: simulate delay for testing compensation flow
+    const isDebugMode = typeof debugDelay === 'number' && debugDelay > 0;
 
     const normalizedFlight = normalizeFlightNumber(flightNumber);
     const dateStr = new Date(date).toISOString().split('T')[0];
@@ -108,7 +111,11 @@ export async function POST(req: NextRequest) {
 
     const scheduled = new Date(scheduledTime);
     const actual = actualTime ? new Date(actualTime) : scheduled;
-    const delayMinutes = Math.max(0, Math.floor((actual.getTime() - scheduled.getTime()) / 60000));
+
+    // Use debug delay if provided, otherwise calculate from actual times
+    const delayMinutes = isDebugMode
+      ? debugDelay
+      : Math.max(0, Math.floor((actual.getTime() - scheduled.getTime()) / 60000));
 
     // Get distance
     let distanceKm = flightData.greatCircleDistance?.km || 0;
@@ -128,6 +135,7 @@ export async function POST(req: NextRequest) {
       distanceKm: Math.round(distanceKm),
       departureCity: flightData.departure?.airport?.name,
       arrivalCity: flightData.arrival?.airport?.name,
+      ...(isDebugMode && { debugMode: true, debugDelay }),
     });
   } catch (error) {
     console.error('Check flight error:', error);

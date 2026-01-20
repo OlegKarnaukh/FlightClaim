@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 interface Flight {
   id: string;
@@ -24,6 +25,10 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [checking, setChecking] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  // Debug mode: add ?debug=240 to URL to simulate 240 min delay for testing
+  const debugDelay = searchParams.get('debug') ? parseInt(searchParams.get('debug')!) : null;
 
   const processFile = async (file: File): Promise<Flight | null> => {
     try {
@@ -98,6 +103,7 @@ export default function Home() {
         body: JSON.stringify({
           flightNumber: flight.flightNumber,
           date: flight.date,
+          ...(debugDelay && { debugDelay }),
         }),
       });
 
@@ -134,6 +140,11 @@ export default function Home() {
 
   return (
     <div style={styles.page}>
+      {debugDelay && (
+        <div style={styles.debugBanner}>
+          🧪 Debug Mode: симуляция задержки {debugDelay} мин ({Math.floor(debugDelay / 60)}ч {debugDelay % 60}м)
+        </div>
+      )}
       <header style={styles.header}>
         <div style={styles.logo}>FlightClaim</div>
       </header>
@@ -337,6 +348,14 @@ function FlightCard({
 const styles: { [key: string]: React.CSSProperties } = {
   page: {
     minHeight: '100vh',
+  },
+  debugBanner: {
+    background: '#fef3c7',
+    color: '#92400e',
+    padding: '8px 16px',
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: 500,
   },
   header: {
     display: 'flex',
