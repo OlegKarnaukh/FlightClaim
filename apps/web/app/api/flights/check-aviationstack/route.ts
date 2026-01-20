@@ -67,22 +67,24 @@ export async function GET(req: NextRequest) {
       ) || flights[0];
     }
 
-    // Calculate delay
+    // Get times
     const scheduledArrival = flightData.arrival?.scheduled;
     const actualArrival = flightData.arrival?.actual;
     const estimatedArrival = flightData.arrival?.estimated;
 
-    let delayMinutes: number | null = null;
-    if (scheduledArrival && (actualArrival || estimatedArrival)) {
+    // API provides delay in minutes directly - prefer this
+    const arrivalDelay = flightData.arrival?.delay; // minutes from API
+
+    // Calculate from actual times only (not estimated)
+    let calculatedDelay: number | null = null;
+    if (scheduledArrival && actualArrival) {
       const scheduled = new Date(scheduledArrival);
-      const actual = new Date(actualArrival || estimatedArrival);
-      delayMinutes = Math.floor((actual.getTime() - scheduled.getTime()) / 60000);
+      const actual = new Date(actualArrival);
+      calculatedDelay = Math.floor((actual.getTime() - scheduled.getTime()) / 60000);
     }
 
-    // Also use the delay field if available
-    const arrivalDelay = flightData.arrival?.delay; // minutes
-
-    const effectiveDelay = delayMinutes ?? arrivalDelay ?? null;
+    // Prefer API delay field, then calculated from actual times
+    const effectiveDelay = arrivalDelay ?? calculatedDelay ?? null;
     const eu261Eligible = effectiveDelay !== null && effectiveDelay >= 180;
 
     return NextResponse.json({
