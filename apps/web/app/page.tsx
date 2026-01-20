@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 interface Flight {
   id: string;
@@ -230,8 +230,22 @@ function FlightCard({
   onUpdateDate: (newDate: string) => void;
   isChecking: boolean;
 }) {
+  const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [editDate, setEditDate] = useState(flight.date);
+
+  const handleClaim = () => {
+    const params = new URLSearchParams({
+      flight: flight.flightNumber,
+      date: flight.date,
+      from: flight.departureCity || flight.departureAirport,
+      to: flight.arrivalCity || flight.arrivalAirport,
+      amount: String(flight.compensation || 0),
+      delay: String(flight.delayMinutes || 0),
+      pnr: flight.pnr || '',
+    });
+    router.push(`/claim?${params.toString()}`);
+  };
 
   const statusText: Record<string, string> = {
     PENDING: 'Требуется проверка',
@@ -332,7 +346,7 @@ function FlightCard({
           <div style={styles.successInfo}>
             Задержка: {Math.floor(flight.delayMinutes / 60)}ч {flight.delayMinutes % 60}мин — вы можете получить €{flight.compensation}!
           </div>
-          <button style={styles.claimBtn}>
+          <button style={styles.claimBtn} onClick={handleClaim}>
             Подать заявку на компенсацию
           </button>
         </div>
