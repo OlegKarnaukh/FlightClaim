@@ -293,8 +293,34 @@
 - Aviationstack free tier — только real-time данные, исторические требуют $49.99/мес
 - FlightAware ($100/мес) — полная история с 2011 года
 
+### Планы: Мультиязычность (i18n)
+
+**Решение:** `react-i18next` для обеих платформ (Web + Expo Mobile)
+
+**Почему не next-intl:**
+- next-intl работает только для Next.js
+- Планируется мобильное приложение на Expo
+- react-i18next работает и в Next.js, и в React Native
+
+**Структура:**
+```
+/packages/translations/
+  ├── en.json
+  ├── ru.json
+  ├── de.json
+  └── it.json
+
+/apps/web/        → react-i18next
+/apps/mobile/     → react-i18next (Expo)
+```
+
+**Языки:** RU, EN, DE, IT
+
+**Статус:** Отложено до завершения монетизации
+
 ### NEXT STEPS:
-- [ ] **Мультиязычность (i18n)** — RU, EN, DE, IT
+- [ ] **Монетизация** — продумать оффер и момент оплаты
+- [ ] Мультиязычность (i18n) — RU, EN, DE, IT
 - [ ] Тестирование на реальном задержанном рейсе (с FlightAware API)
 - [ ] Включить Google OAuth
 - [ ] Stripe интеграция
