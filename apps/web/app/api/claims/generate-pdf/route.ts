@@ -8,6 +8,7 @@ interface PassengerData {
   phone: string;
   address: string;
   passportNumber: string;
+  iban: string;
   bookingReference: string;
 }
 
@@ -141,9 +142,9 @@ export async function POST(req: NextRequest) {
       `                    EUR ${flight.compensation}`,
       '',
       'I kindly request payment of the above amount within 14 days of receipt of this',
-      'claim to the following bank details:',
+      'claim to the following bank account:',
       '',
-      '[Please provide your bank details: IBAN, BIC/SWIFT, Bank Name]',
+      `IBAN: ${passenger.iban}`,
       '',
       'In case of refusal or failure to respond within the specified period, I will be',
       'compelled to pursue my claim through the national civil aviation authority and/or',
