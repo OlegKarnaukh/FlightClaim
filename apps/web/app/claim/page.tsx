@@ -287,21 +287,21 @@ function ClaimContent() {
         <div style={styles.modalOverlay}>
           <div style={styles.modal}>
             <div style={styles.modalIcon}>✓</div>
-            <h2 style={styles.modalTitle}>Claim Generated Successfully!</h2>
+            <h2 style={styles.modalTitle}>Претензия сформирована!</h2>
             <p style={styles.modalText}>
-              Download your claim document and send it to the airline at:
+              Скачайте документ и отправьте его на email авиакомпании:
             </p>
             <div style={styles.emailBox}>
               <strong>{airlineEmail}</strong>
             </div>
             <p style={styles.modalHint}>
-              Attach your booking confirmation and boarding pass as evidence.
+              Приложите к письму подтверждение бронирования и посадочный талон.
             </p>
             <button style={styles.downloadBtn} onClick={handleDownload}>
-              Download Claim (PDF)
+              Скачать претензию (PDF)
             </button>
             <button style={styles.closeBtn} onClick={() => setShowSuccessModal(false)}>
-              Close
+              Закрыть
             </button>
           </div>
         </div>

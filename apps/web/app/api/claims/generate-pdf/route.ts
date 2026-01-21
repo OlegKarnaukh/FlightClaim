@@ -165,16 +165,6 @@ export async function POST(req: NextRequest) {
     drawText(`Date: ${today}`);
     drawText('Signature: _____________________');
 
-    // Footer
-    y = 40;
-    page.drawText('Document generated at FlightClaim.com', {
-      x: leftMargin,
-      y,
-      size: 8,
-      font,
-      color: rgb(0.5, 0.5, 0.5),
-    });
-
     // Generate PDF bytes
     const pdfBytes = await pdfDoc.save();
 
