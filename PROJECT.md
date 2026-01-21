@@ -247,15 +247,61 @@
 - `apps/web/app/api/flights/extract/route.ts` — извлечение данных из изображения
 - `apps/web/app/api/flights/check/route.ts` — проверка статуса рейса
 
+### 2026-01-20 — ✅ MVP v3: Claim Form & PDF Generation
+
+**Реализовано:**
+- [x] **Debug режим для тестирования** — `?debug=240` симулирует задержку 240 мин
+- [x] **Aviationstack API интеграция** — альтернативный источник данных с actual times
+- [x] **Форма претензии (`/claim`):**
+  - Данные пассажира: First Name, Last Name, Email, Phone, Address, Passport
+  - Банковские реквизиты: IBAN
+  - Booking Reference (PNR)
+  - Все placeholders на английском для PDF совместимости
+- [x] **PDF генерация претензии:**
+  - Официальный формат по EU261/2004
+  - На английском (стандарт для европейских авиакомпаний)
+  - Авто-определение авиакомпании и email по номеру рейса
+  - IBAN включён в документ
+- [x] **Success modal:**
+  - Показывает email авиакомпании для отправки
+  - Кнопка скачивания PDF
+  - Инструкции на русском
+- [x] **Поддерживаемые авиакомпании (email для претензий):**
+  - FR: Ryanair (customerqueries@ryanair.com)
+  - U2: EasyJet (customerservices@easyjet.com)
+  - W6/W4: Wizz Air (info@wizzair.com)
+  - VY: Vueling (customers@vueling.com)
+  - LH: Lufthansa (customer.relations@lufthansa.com)
+  - AF: Air France (mail.customercare.france@airfrance.fr)
+  - KL: KLM (klmcares@klm.com)
+  - BA: British Airways (customer.relations@ba.com)
+  - IB: Iberia (iberia@iberia.es)
+  - TP: TAP Portugal (customer@flytap.com)
+  - SK: SAS (customer-relations@sas.se)
+  - EI: Aer Lingus (customerrelations@aerlingus.com)
+
+**Файлы:**
+- `apps/web/app/claim/page.tsx` — форма претензии с IBAN
+- `apps/web/app/api/claims/generate-pdf/route.ts` — генерация PDF (pdf-lib)
+- `apps/web/app/api/flights/check-aviationstack/route.ts` — Aviationstack API
+
+**API ключи:**
+- `AVIATIONSTACK_KEY` — для Aviationstack API (100 req/month free)
+
+**Известные ограничения:**
+- AeroDataBox не возвращает actual times для исторических рейсов
+- Aviationstack free tier — только real-time данные, исторические требуют $49.99/мес
+- FlightAware ($100/мес) — полная история с 2011 года
+
 ### NEXT STEPS:
-- [ ] **Тестирование на реальном задержанном рейсе**
+- [ ] **Мультиязычность (i18n)** — RU, EN, DE, IT
+- [ ] Тестирование на реальном задержанном рейсе (с FlightAware API)
 - [ ] Включить Google OAuth
-- [ ] PDF генерация претензий
 - [ ] Stripe интеграция
 
 ---
 
-**Последнее обновление:** 2026-01-19 (MVP v2: Boarding Pass Upload ✅)
+**Последнее обновление:** 2026-01-20 (MVP v3: Claim Form & PDF Generation ✅)
 
 Создай файл `.env.local` со следующими переменными:
 
