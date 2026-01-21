@@ -235,6 +235,84 @@ export default function ClaimDetailPage() {
         <div style={styles.section}>
           <h2 style={styles.sectionTitle}>Действия</h2>
 
+          {/* Instructions based on airline response */}
+          {claim.airlineResponse === 'REQUESTED_DOCS' && claim.status !== 'PAID' && (
+            <div style={styles.actionCard}>
+              <div style={styles.actionHeader}>
+                <span style={styles.actionIcon}>📄</span>
+                <span style={styles.actionTitle}>Авиакомпания запросила документы</span>
+              </div>
+              <p style={styles.actionText}>
+                Отправьте им следующие документы:
+              </p>
+              <ul style={styles.docList}>
+                <li>Посадочный талон (boarding pass)</li>
+                <li>Подтверждение бронирования (email или PDF)</li>
+                <li>Копия паспорта (страница с фото)</li>
+                <li>Если есть — чеки на еду/отель во время задержки</li>
+              </ul>
+              <p style={styles.actionHint}>
+                После отправки документов ожидайте ответа в течение 14-30 дней.
+              </p>
+              <button
+                style={styles.secondaryBtn}
+                onClick={() => updateClaim({ airlineResponse: 'NONE' })}
+              >
+                Документы отправлены, жду ответа
+              </button>
+            </div>
+          )}
+
+          {claim.airlineResponse === 'REJECTED' && claim.status !== 'PAID' && (
+            <div style={styles.actionCard}>
+              <div style={styles.actionHeader}>
+                <span style={styles.actionIcon}>❌</span>
+                <span style={styles.actionTitle}>Авиакомпания отказала</span>
+              </div>
+              <p style={styles.actionText}>
+                Не сдавайтесь! Вот что можно сделать:
+              </p>
+              <div style={styles.rejectionOptions}>
+                <div style={styles.rejectionOption}>
+                  <strong>1. Запросите обоснование</strong>
+                  <p>Напишите: "Прошу предоставить официальное обоснование отказа со ссылкой на конкретные обстоятельства рейса {claim.flightNumber}."</p>
+                </div>
+                <div style={styles.rejectionOption}>
+                  <strong>2. Проверьте причину отказа</strong>
+                  <p>Авиакомпании часто ссылаются на "форс-мажор", но должны доказать это документально. Запросите METAR-отчёт или документы о технической неисправности.</p>
+                </div>
+                <div style={styles.rejectionOption}>
+                  <strong>3. Эскалируйте жалобу</strong>
+                  <p>Подайте жалобу в национальный авиационный орган страны вылета.</p>
+                </div>
+              </div>
+              <button style={styles.primaryBtn} onClick={markEscalated}>
+                Подать жалобу в нац. орган
+              </button>
+              <button
+                style={{ ...styles.secondaryBtn, marginTop: 8 }}
+                onClick={() => updateClaim({ airlineResponse: 'NONE' })}
+              >
+                Отправил запрос на обоснование
+              </button>
+            </div>
+          )}
+
+          {claim.airlineResponse === 'ACCEPTED' && claim.status !== 'PAID' && (
+            <div style={styles.successCard}>
+              <div style={styles.actionHeader}>
+                <span style={styles.actionIcon}>🎉</span>
+                <span style={styles.actionTitle}>Авиакомпания согласилась выплатить!</span>
+              </div>
+              <p style={styles.actionText}>
+                Отлично! Обычно выплата происходит в течение 7-30 дней на указанный IBAN.
+              </p>
+              <p style={styles.actionHint}>
+                Когда деньги поступят на счёт, нажмите кнопку ниже.
+              </p>
+            </div>
+          )}
+
           {claim.status === 'CREATED' && (
             <div style={styles.actionCard}>
               <div style={styles.actionHeader}>
@@ -755,5 +833,29 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: 14,
     cursor: 'pointer',
     marginTop: 8,
+  },
+  docList: {
+    margin: '12px 0',
+    paddingLeft: 20,
+    lineHeight: 1.8,
+  },
+  rejectionOptions: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+    margin: '16px 0',
+  },
+  rejectionOption: {
+    background: 'white',
+    padding: 16,
+    borderRadius: 8,
+    border: '1px solid #e5e7eb',
+  },
+  successCard: {
+    background: '#ecfdf5',
+    border: '1px solid #a7f3d0',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 12,
   },
 };
