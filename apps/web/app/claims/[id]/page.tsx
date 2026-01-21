@@ -29,6 +29,15 @@ const responseLabels: Record<string, string> = {
   ACCEPTED: 'Приняли',
 };
 
+interface AuthorityInfo {
+  name: string;
+  fullName: string;
+  email: string;
+  website: string;
+  address: string;
+  country: string;
+}
+
 export default function ClaimDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -37,6 +46,8 @@ export default function ClaimDetailPage() {
   const [claim, setClaim] = useState<LocalClaim | null>(null);
   const [loading, setLoading] = useState(true);
   const [showResponseModal, setShowResponseModal] = useState(false);
+  const [authority, setAuthority] = useState<AuthorityInfo | null>(null);
+  const [generatingEscalation, setGeneratingEscalation] = useState(false);
 
   useEffect(() => {
     loadClaim();
@@ -97,6 +108,71 @@ export default function ClaimDetailPage() {
       airlineResponse: 'ACCEPTED',
       resolvedAt: new Date().toISOString(),
     });
+  };
+
+  // Fetch authority info when claim loads
+  useEffect(() => {
+    if (claim?.departureAirport) {
+      fetch(`/api/claims/generate-escalation-pdf?airport=${claim.departureAirport}`)
+        .then(res => res.json())
+        .then(data => setAuthority(data))
+        .catch(err => console.error('Failed to fetch authority:', err));
+    }
+  }, [claim?.departureAirport]);
+
+  const generateEscalationPdf = async () => {
+    if (!claim) return;
+    setGeneratingEscalation(true);
+
+    try {
+      const res = await fetch('/api/claims/generate-escalation-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: claim.firstName,
+          lastName: claim.lastName,
+          email: claim.email,
+          phone: claim.phone,
+          address: claim.address || 'Address not provided',
+          flightNumber: claim.flightNumber,
+          flightDate: claim.flightDate,
+          departureCity: claim.departureCity,
+          arrivalCity: claim.arrivalCity,
+          departureAirport: claim.departureAirport || 'UNK',
+          airline: claim.airline,
+          airlineEmail: claim.airlineEmail,
+          delayMinutes: claim.delayMinutes,
+          compensation: claim.compensation,
+          claimSentDate: claim.sentAt || claim.createdAt,
+          followUpDate: claim.followUpAt,
+          airlineResponse: claim.airlineResponse,
+        }),
+      });
+
+      if (!res.ok) throw new Error('PDF generation failed');
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `complaint-${claim.flightNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      // Get authority info from response headers
+      const authorityName = res.headers.get('X-Authority-Name');
+      const authorityEmail = res.headers.get('X-Authority-Email');
+      if (authorityName && authorityEmail) {
+        setAuthority(prev => prev ? { ...prev, name: authorityName, email: authorityEmail } : prev);
+      }
+    } catch (err) {
+      console.error('Escalation PDF error:', err);
+      alert('Ошибка генерации PDF');
+    } finally {
+      setGeneratingEscalation(false);
+    }
   };
 
   const setAirlineResponse = (response: LocalClaim['airlineResponse']) => {
@@ -379,13 +455,36 @@ export default function ClaimDetailPage() {
                   <span style={styles.actionTitle}>Эскалация в национальный орган</span>
                 </div>
                 <p style={styles.actionText}>
-                  Если авиакомпания не отвечает, подайте жалобу в национальный авиационный орган.
+                  Авиакомпания не реагирует — подайте жалобу в национальный авиационный орган.
                 </p>
+
+                {authority && (
+                  <div style={styles.authorityCard}>
+                    <div style={styles.authorityHeader}>
+                      <strong>{authority.fullName}</strong>
+                      <span style={styles.authorityCountry}>({authority.country})</span>
+                    </div>
+                    <div style={styles.authorityInfo}>
+                      <div>📧 <a href={`mailto:${authority.email}`} style={styles.authorityLink}>{authority.email}</a></div>
+                      <div>🌐 <a href={authority.website} target="_blank" rel="noopener" style={styles.authorityLink}>{authority.website}</a></div>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  style={styles.primaryBtn}
+                  onClick={generateEscalationPdf}
+                  disabled={generatingEscalation}
+                >
+                  {generatingEscalation ? 'Генерация...' : 'Скачать жалобу (PDF)'}
+                </button>
+
                 <p style={styles.actionHint}>
-                  Для рейсов из ЕС: орган страны вылета. Для рейсов в ЕС на европейской авиакомпании: орган страны прилёта.
+                  Скачайте PDF и отправьте на email органа выше. Приложите копию первоначальной претензии.
                 </p>
-                <button style={styles.primaryBtn} onClick={markEscalated}>
-                  Я подал жалобу
+
+                <button style={styles.successBtn} onClick={markEscalated}>
+                  Я отправил жалобу
                 </button>
               </div>
 
@@ -857,5 +956,33 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: 12,
     padding: 20,
     marginBottom: 12,
+  },
+  authorityCard: {
+    background: 'white',
+    border: '1px solid #d1d5db',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+  },
+  authorityHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+  },
+  authorityCountry: {
+    color: '#6b7280',
+    fontSize: 13,
+  },
+  authorityInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    fontSize: 14,
+  },
+  authorityLink: {
+    color: '#2563eb',
+    textDecoration: 'none',
   },
 };

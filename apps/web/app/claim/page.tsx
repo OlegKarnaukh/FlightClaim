@@ -82,6 +82,8 @@ function ClaimContent() {
   const date = searchParams.get('date') || '';
   const departureCity = searchParams.get('from') || '';
   const arrivalCity = searchParams.get('to') || '';
+  const departureAirport = searchParams.get('fromCode') || '';
+  const arrivalAirport = searchParams.get('toCode') || '';
   const compensation = searchParams.get('amount') || '0';
   const delayMinutes = searchParams.get('delay') || '0';
 
@@ -150,12 +152,16 @@ function ClaimContent() {
         airlineEmail,
         departureCity,
         arrivalCity,
+        departureAirport: departureAirport || undefined,
+        arrivalAirport: arrivalAirport || undefined,
         flightDate: date,
         delayMinutes: parseInt(delayMinutes),
         compensation: parseInt(compensation),
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
+        phone: formData.phone || undefined,
+        address: formData.address || undefined,
         status: 'CREATED',
         createdAt: new Date().toISOString(),
       };

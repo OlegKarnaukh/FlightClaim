@@ -12,6 +12,8 @@ export interface LocalClaim {
   airlineEmail: string;
   departureCity: string;
   arrivalCity: string;
+  departureAirport?: string; // IATA code
+  arrivalAirport?: string;   // IATA code
   flightDate: string;
   delayMinutes: number;
   compensation: number;
@@ -19,6 +21,8 @@ export interface LocalClaim {
   firstName: string;
   lastName: string;
   email: string;
+  phone?: string;
+  address?: string;
   // Status
   status: 'CREATED' | 'SENT' | 'FOLLOW_UP' | 'ESCALATED' | 'PAID' | 'REFUNDED';
   airlineResponse?: 'NONE' | 'REQUESTED_DOCS' | 'REJECTED' | 'ACCEPTED';
