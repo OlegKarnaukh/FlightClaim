@@ -15,6 +15,7 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   flights   Flight[]
+  claims    Claim[]
 }
 
 model Flight {
@@ -50,4 +51,76 @@ enum FlightStatus {
   ELIGIBLE     // Eligible for compensation
   NOT_ELIGIBLE // No delay or not covered
   ERROR        // Check failed
+}
+
+model Claim {
+  id              String      @id @default(cuid())
+
+  // User (optional for anonymous)
+  userId          String?
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  deviceId        String?     // For anonymous tracking via RevenueCat
+
+  // Flight info (stored directly for independence)
+  flightNumber    String
+  airline         String
+  airlineEmail    String
+  departureAirport String
+  arrivalAirport  String
+  departureCity   String?
+  arrivalCity     String?
+  flightDate      DateTime
+  delayMinutes    Int
+  compensation    Int         // EUR amount
+
+  // Passenger info
+  firstName       String
+  lastName        String
+  email           String
+  phone           String?
+  address         String?
+  passportNumber  String?
+  iban            String?
+  bookingReference String?
+
+  // Claim status
+  status          ClaimStatus @default(CREATED)
+  airlineResponse AirlineResponse?
+
+  // Dates for tracking
+  createdAt       DateTime    @default(now())
+  sentAt          DateTime?   // When user marked as sent
+  followUpAt      DateTime?   // When follow-up was sent
+  escalatedAt     DateTime?   // When escalated to authority
+  resolvedAt      DateTime?   // When paid or refunded
+
+  // Subscription info
+  subscriptionType SubscriptionType @default(SINGLE)
+
+  updatedAt       DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([deviceId])
+  @@index([status])
+}
+
+enum ClaimStatus {
+  CREATED       // PDF generated, not sent yet
+  SENT          // User sent to airline
+  FOLLOW_UP     // Follow-up sent (day 14+)
+  ESCALATED     // Escalated to national authority (day 30+)
+  PAID          // Compensation received
+  REFUNDED      // Money-back issued (day 120+)
+}
+
+enum AirlineResponse {
+  NONE          // No response yet
+  REQUESTED_DOCS // Airline requested documents
+  REJECTED      // Airline rejected claim
+  ACCEPTED      // Airline accepted, payment pending
+}
+
+enum SubscriptionType {
+  SINGLE        // €1.99 one-time
+  ANNUAL        // €9.99/year subscription
 }

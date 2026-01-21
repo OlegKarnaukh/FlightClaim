@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { LocalClaim } from '../claims/page';
 
 interface PassengerData {
   firstName: string;
@@ -12,6 +13,11 @@ interface PassengerData {
   passportNumber: string;
   iban: string;
   bookingReference: string;
+}
+
+// Generate unique ID
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
 // Map flight number prefix to airline email
@@ -35,6 +41,28 @@ const airlineEmails: Record<string, string> = {
 function getAirlineEmail(flightNumber: string): string {
   const prefix = flightNumber.substring(0, 2).toUpperCase();
   return airlineEmails[prefix] || 'customer.service@airline.com';
+}
+
+const airlineNames: Record<string, string> = {
+  'FR': 'Ryanair',
+  'U2': 'EasyJet',
+  'W6': 'Wizz Air',
+  'W4': 'Wizz Air',
+  'VY': 'Vueling',
+  'LH': 'Lufthansa',
+  'AF': 'Air France',
+  'KL': 'KLM',
+  'BA': 'British Airways',
+  'IB': 'Iberia',
+  'AZ': 'ITA Airways',
+  'TP': 'TAP Portugal',
+  'SK': 'SAS',
+  'EI': 'Aer Lingus',
+};
+
+function getAirlineName(flightNumber: string): string {
+  const prefix = flightNumber.substring(0, 2).toUpperCase();
+  return airlineNames[prefix] || 'Airline';
 }
 
 export default function ClaimPage() {
@@ -72,8 +100,10 @@ function ClaimContent() {
   const [error, setError] = useState('');
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [createdClaimId, setCreatedClaimId] = useState<string | null>(null);
 
   const airlineEmail = getAirlineEmail(flightNumber);
+  const airline = getAirlineName(flightNumber);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData(prev => ({
@@ -110,6 +140,33 @@ function ClaimContent() {
 
       const blob = await res.blob();
       setPdfBlob(blob);
+
+      // Save claim to localStorage
+      const claimId = generateId();
+      const newClaim: LocalClaim = {
+        id: claimId,
+        flightNumber,
+        airline,
+        airlineEmail,
+        departureCity,
+        arrivalCity,
+        flightDate: date,
+        delayMinutes: parseInt(delayMinutes),
+        compensation: parseInt(compensation),
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        status: 'CREATED',
+        createdAt: new Date().toISOString(),
+      };
+
+      // Get existing claims and add new one
+      const existingClaims = localStorage.getItem('flightclaim_claims');
+      const claims: LocalClaim[] = existingClaims ? JSON.parse(existingClaims) : [];
+      claims.unshift(newClaim);
+      localStorage.setItem('flightclaim_claims', JSON.stringify(claims));
+
+      setCreatedClaimId(claimId);
       setShowSuccessModal(true);
 
     } catch (err) {
@@ -299,6 +356,12 @@ function ClaimContent() {
             </p>
             <button style={styles.downloadBtn} onClick={handleDownload}>
               Скачать претензию (PDF)
+            </button>
+            <button
+              style={styles.trackBtn}
+              onClick={() => router.push(createdClaimId ? `/claims/${createdClaimId}` : '/claims')}
+            >
+              Отслеживать статус
             </button>
             <button style={styles.closeBtn} onClick={() => setShowSuccessModal(false)}>
               Закрыть
@@ -501,6 +564,18 @@ const styles: { [key: string]: React.CSSProperties } = {
   downloadBtn: {
     width: '100%',
     background: '#10b981',
+    color: 'white',
+    border: 'none',
+    padding: '14px',
+    borderRadius: 8,
+    fontSize: 16,
+    fontWeight: 600,
+    cursor: 'pointer',
+    marginBottom: 12,
+  },
+  trackBtn: {
+    width: '100%',
+    background: '#2563eb',
     color: 'white',
     border: 'none',
     padding: '14px',
